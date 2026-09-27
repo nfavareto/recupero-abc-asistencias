@@ -1,4 +1,4 @@
-// Gestión de llamados — Recupero de medio de pago Medic Assist
+// Gestión de llamados — Recupero de medio de pago ABC Asistencias
 // Backend: Netlify Functions v2 + Netlify Blobs (sin base externa)
 import { getStore } from "@netlify/blobs";
 import crypto from "node:crypto";
@@ -39,7 +39,7 @@ const TIPS = {
 };
 const MARCAS = ["Visa", "Mastercard", "American Express", "Naranja"];
 const DEF_CONFIG = {
-  campaign: "Recupero de medio de pago — Medic Assist",
+  campaign: "Recupero de medio de pago — ABC Asistencias",
   maxIntentos: 5,
   quincenaEstricta: true,
   minEntreIntentos: 60,
@@ -107,13 +107,28 @@ async function getUsers() {
     const ip = process.env.INIT_PASS || "Medic2026!";
     d = {
       users: [
+        { u: "admin", name: "Administrador", role: "admin", activo: true, ...hashP(ip) },
         { u: "supervisor", name: "Supervisor", role: "supervisor", activo: true, ...hashP(ip) },
         { u: "operador1", name: "Operador 1", role: "operador", quincena: 1, activo: true, ...hashP(ip) },
         { u: "operador2", name: "Operador 2", role: "operador", quincena: 2, activo: true, ...hashP(ip) },
-        { u: "cliente", name: "Medic Assist", role: "cliente", activo: true, ...hashP(ip) },
+        { u: "cliente", name: "ABC Asistencias", role: "cliente", activo: true, ...hashP(ip) },
       ],
+      adminSeeded: true,
     };
     await store().setJSON("users", d);
+  }
+  // Migración: bases de usuarios creadas antes de existir el rol admin
+  if (!d.adminSeeded) {
+    d = await mutate("users", { users: [] }, (x) => {
+      if (x.adminSeeded) return;
+      if (!x.users.some((y) => y.role === "admin")) {
+        const ip = process.env.INIT_PASS || "Medic2026!";
+        let u = "admin", i = 2;
+        while (x.users.some((y) => y.u === u)) u = "admin" + i++;
+        x.users.push({ u, name: "Administrador", role: "admin", activo: true, ...hashP(ip) });
+      }
+      x.adminSeeded = true;
+    }).then(() => readJSON("users", { users: [] }));
   }
   return d;
 }
@@ -129,7 +144,10 @@ async function auth(req) {
   if (!u) fail("Usuario inactivo.", 401);
   return { ...publicUser(u), token: tok };
 }
-const need = (user, ...roles) => { if (!roles.includes(user.role)) fail("No tenés permiso para esta acción.", 403); };
+// El admin pasa cualquier control de rol. "supervisor" en need() habilita también al admin.
+const need = (user, ...roles) => { if (user.role !== "admin" && !roles.includes(user.role)) fail("No tenés permiso para esta acción.", 403); };
+const esSup = (user) => user.role === "supervisor" || user.role === "admin";
+const esAdmin = (user) => user.role === "admin";
 
 /* ───────────── Cifrado de tarjetas ───────────── */
 function tcKey() {
@@ -304,9 +322,11 @@ export default async (req) => {
             if (r.estado === "cerrado" || lockedByOther(r, user)) return false;
             if (fuente && !(r.fuentes || [r.fuente]).includes(fuente)) return false;
             const due = r.agenda && r.agenda.at <= now;
-            if (r.agenda && !due) return false;
-            if (!due && r.ultimaAt && now - r.ultimaAt < cfg.minEntreIntentos * 60e3) return false;
-            if (!due && r.hist.filter((h) => h.grupo !== "sistema" && h.at >= t0).length >= cfg.maxDiarios) return false;
+            if (!esAdmin(user)) {
+              if (r.agenda && !due) return false;
+              if (!due && r.ultimaAt && now - r.ultimaAt < cfg.minEntreIntentos * 60e3) return false;
+              if (!due && r.hist.filter((h) => h.grupo !== "sistema" && h.at >= t0).length >= cfg.maxDiarios) return false;
+            }
             if (!r.telefonos.some((t) => !t.invalido)) return false;
             return true;
           });
@@ -332,7 +352,7 @@ export default async (req) => {
         const rec = await mutate("records", REC_DEF, (db) => {
           const r = db.items[body.id];
           if (!r) fail("No existe el registro.", 404);
-          if (r.estado === "cerrado" && user.role !== "supervisor") fail("Ese registro está cerrado. Pedile al supervisor que lo reabra.");
+          if (r.estado === "cerrado" && !esSup(user)) fail("Ese registro está cerrado. Pedile al supervisor que lo reabra.");
           if (lockedByOther(r, user)) fail(`Lo está gestionando ${r.lock.name}.`);
           for (const o of Object.values(db.items)) if (o.lock && o.lock.by === user.u && o.id !== r.id) o.lock = null;
           r.lock = { by: user.u, name: user.name, until: Date.now() + cfg.lockMin * 60e3 };
@@ -345,7 +365,7 @@ export default async (req) => {
         await mutate("records", REC_DEF, (db) => {
           const r = db.items[body.id];
           if (!r) fail("No existe el registro.", 404);
-          if (user.role !== "supervisor" && r.lock && r.lock.by !== user.u) fail("No podés liberar un registro de otro usuario.", 403);
+          if (!esSup(user) && r.lock && r.lock.by !== user.u) fail("No podés liberar un registro de otro usuario.", 403);
           r.lock = null;
         });
         return json({ ok: true });
@@ -399,12 +419,12 @@ export default async (req) => {
           agendaAt = body.agendaAt ? Date.parse(body.agendaAt) : null;
           if (def.agenda === "requerida" && !agendaAt) fail("Indicá fecha y hora para volver a llamar.");
           if (agendaAt && agendaAt < Date.now() - 5 * 60e3) fail("La fecha de rellamado ya pasó.");
-          if (agendaAt && !enHorario(cfg, agendaAt)) fail(`El rellamado tiene que quedar dentro del horario de gestión (${cfg.horaInicio} a ${cfg.horaFin} hs).`);
+          if (agendaAt && !esAdmin(user) && !enHorario(cfg, agendaAt)) fail(`El rellamado tiene que quedar dentro del horario de gestión (${cfg.horaInicio} a ${cfg.horaFin} hs).`);
         }
         const rec = await mutate("records", REC_DEF, (db) => {
           const r = db.items[body.id];
           if (!r) fail("No existe el registro.", 404);
-          if (r.estado === "cerrado" && user.role !== "supervisor") fail("El registro ya está cerrado.");
+          if (r.estado === "cerrado" && !esSup(user)) fail("El registro ya está cerrado.");
           if (lockedByOther(r, user)) fail(`Lo está gestionando ${r.lock.name}.`);
           if (def.venta && !r.tcCargada) fail("Para tipificar Venta primero guardá los datos de la tarjeta nueva.");
           const tel = digits(body.tel) || r.telefonos.find((t) => !t.invalido)?.n || "";
@@ -444,7 +464,7 @@ export default async (req) => {
         const recs = await readJSON("records", REC_DEF);
         const r0 = recs.items[body.id];
         if (!r0) fail("No existe el registro.", 404);
-        if (r0.tcCargada && user.role !== "supervisor") fail("La tarjeta ya fue cargada y quedó bloqueada. Si hay un error, avisale al supervisor.", 403);
+        if (r0.tcCargada && !esSup(user)) fail("La tarjeta ya fue cargada y quedó bloqueada. Si hay un error, avisale al supervisor.", 403);
         if (lockedByOther(r0, user)) fail(`Lo está gestionando ${r0.lock.name}.`);
         await store().setJSON(`tc/${body.id}`, { ...encrypt(tc), by: user.u, at: Date.now() });
         const rec = await mutate("records", REC_DEF, (db) => {
@@ -524,11 +544,11 @@ export default async (req) => {
       }
 
       case "users": {
-        need(user, "supervisor");
+        need(user, "admin");
         if (req.method === "GET") return json({ users: (await getUsers()).users.map(publicUser) });
         const u = String(body.u || "").trim().toLowerCase();
         if (!/^[a-z0-9._-]{3,30}$/.test(u)) fail("El usuario usa de 3 a 30 letras, números, punto o guion, sin espacios.");
-        if (!["operador", "supervisor", "cliente"].includes(body.role)) fail("Rol inválido.");
+        if (!["operador", "supervisor", "cliente", "admin"].includes(body.role)) fail("Rol inválido.");
         await mutate("users", { users: [] }, (d) => {
           let x = d.users.find((y) => y.u === u);
           if (!x) {
@@ -540,14 +560,14 @@ export default async (req) => {
           x.quincena = body.role === "operador" ? ([1, 2].includes(+body.quincena) ? +body.quincena : null) : null;
           x.activo = body.activo !== false;
           if (body.p) { if (String(body.p).length < 6) fail("La contraseña necesita al menos 6 caracteres."); Object.assign(x, hashP(body.p)); }
-          if (!d.users.some((y) => y.role === "supervisor" && y.activo !== false)) fail("Tiene que quedar al menos un supervisor activo.");
+          if (!d.users.some((y) => y.role === "admin" && y.activo !== false)) fail("Tiene que quedar al menos un admin activo.");
         });
         await audit(user, "usuario", u);
         return json({ ok: true });
       }
 
       case "config": {
-        need(user, "supervisor");
+        need(user, "admin");
         const n = {
           campaign: String(body.campaign || DEF_CONFIG.campaign).slice(0, 100),
           maxIntentos: Math.max(1, Math.min(20, +body.maxIntentos || 5)),
@@ -565,13 +585,13 @@ export default async (req) => {
       }
 
       case "audit": {
-        need(user, "supervisor");
+        need(user, "admin");
         const a = await readJSON("audit", { items: [] });
         return json({ items: a.items.slice(-500).reverse() });
       }
 
       case "reset": {
-        need(user, "supervisor");
+        need(user, "admin");
         if (body.confirmar !== "BORRAR") fail("Escribí BORRAR para confirmar.");
         const st = store();
         const { blobs } = await st.list({ prefix: "tc/" });

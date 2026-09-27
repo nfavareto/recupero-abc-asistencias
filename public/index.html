@@ -173,7 +173,7 @@ svg.chart text{font-size:11px;fill:var(--muted);font-family:inherit}
 .drawer{position:fixed;top:0;right:0;bottom:0;width:min(560px,100%);background:var(--surface);z-index:41;overflow:auto;box-shadow:-8px 0 30px rgba(19,48,59,.2)}
 .drawer .bar{display:flex;gap:8px;padding:12px 20px;border-bottom:1px solid var(--line);position:sticky;top:0;background:var(--surface);z-index:1;flex-wrap:wrap}
 
-.drop{border:2px dashed var(--line);border-radius:var(--r-m);padding:30px;text-align:center;background:var(--surface);cursor:pointer}
+.drop{display:block;margin-top:12px;border:2px dashed var(--line);border-radius:var(--r-m);padding:30px;text-align:center;background:var(--surface);cursor:pointer}
 .drop:hover,.drop.over{border-color:var(--ink2);background:var(--soft)}
 .map-list{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:6px;font-size:13px}
 .map-list div{padding:6px 10px;border:1px solid var(--line);border-radius:var(--r-s);background:var(--surface)}
@@ -237,10 +237,11 @@ async function render() {
     try { S.st = await API("state"); S.user = S.st.user; } catch (e) { return; }
     S.view = S.view || (S.user.role === "operador" ? "gestion" : "reporte");
   }
-  const u = S.user, isSup = u.role === "supervisor", isCli = u.role === "cliente";
+  const u = S.user, isAdmin = u.role === "admin", isSup = u.role === "supervisor" || isAdmin, isCli = u.role === "cliente";
   const tabs = u.role === "operador" ? [["gestion", "Gestión"], ["agenda", "Agenda"]]
-    : isSup ? [["reporte", "Reporte"], ["base", "Base"], ["cobros", "Cobros"], ["agenda", "Agenda"], ["gestion", "Gestionar"], ["carga", "Cargar base"], ["config", "Usuarios y configuración"]]
+    : isSup ? [["reporte", "Reporte"], ["base", "Base"], ["cobros", "Cobros"], ["agenda", "Agenda"], ["gestion", "Gestionar"], ["carga", "Cargar base"], ...(isAdmin ? [["config", "Usuarios y configuración"]] : [])]
     : [["reporte", "Reporte"], ["base", "Base"]];
+  if (!tabs.some(([k]) => k === S.view)) S.view = tabs[0][0];
   const hoy = S.st.hoy;
   app.innerHTML = `
     <header class="top">
@@ -248,7 +249,7 @@ async function render() {
       <nav>${tabs.map(([k, l]) => `<button data-v="${k}" class="${S.view === k ? "on" : ""}">${l}</button>`).join("")}</nav>
       <div class="who">
         ${hoy ? `<div class="stat-inline"><span><b>${hoy.gestiones}</b>gestiones hoy</span><span><b>${hoy.contactos}</b>contactos</span><span><b>${hoy.ventas}</b>ventas</span></div>` : ""}
-        <span>${esc(u.name)}${u.quincena ? ` · ${u.quincena === 1 ? "1ª" : "2ª"} quincena` : ""}</span>
+        <span>${esc(u.name)}${u.quincena ? ` · ${u.quincena === 1 ? "1ª" : "2ª"} quincena` : ""}${isAdmin ? ` · <b title="Sin tope diario, sin intervalo entre intentos y con acceso a rellamados futuros">admin · sin reglas</b>` : ""}</span>
         <button class="btn" id="logout">Salir</button>
       </div>
     </header>
@@ -446,7 +447,7 @@ function renderTipExtra(x, w) {
 }
 
 function renderVault(v, w) {
-  const r = S.rec, F = S.form, isSup = S.user.role === "supervisor";
+  const r = S.rec, F = S.form, isSup = ["supervisor", "admin"].includes(S.user.role);
   if (r.tcCargada && !(isSup && F.tcEdit)) {
     v.innerHTML = `
       <h3>Tarjeta nueva</h3>
@@ -534,7 +535,7 @@ function filterBar(showDates = true) {
     <div class="grow"></div>
     <button class="btn" id="bref">Actualizar datos</button>
     <button class="btn" id="bexp">Exportar Excel</button>
-    ${S.user.role === "supervisor" ? `<button class="btn" id="bexptc">Exportar ventas con tarjeta</button>` : ""}
+    ${["supervisor", "admin"].includes(S.user.role) ? `<button class="btn" id="bexptc">Exportar ventas con tarjeta</button>` : ""}
   </div>`;
 }
 function bindFilters(m, rerender) {
@@ -659,7 +660,7 @@ async function viewBase(m) {
   </div>
   <div class="panel"><div class="bd tbl-wrap">
     <table class="t"><thead><tr><th>Cliente</th><th>DNI</th><th>Teléfono</th><th>Fuente</th><th class="n">Int.</th><th>Último resultado</th><th>Estado</th><th>TC nueva</th></tr></thead><tbody>
-    ${slice.map((r) => `<tr class="click" data-id="${r.id}" tabindex="0"><td><b>${esc(r.nombre)}</b></td><td>${esc(r.dni)}</td><td>${esc(fmtTel(r.telefonos.find((t) => !t.invalido)?.n || r.telefonos[0]?.n || ""))}${r.telefonos.length > 1 ? ` <span class="muted">+${r.telefonos.length - 1}</span>` : ""}</td><td>${esc(r.fuente)}</td><td class="n">${r.intentos}</td><td>${esc(r.ultima ? r.ultima.label + (r.ultima.sub ? " · " + r.ultima.sub : "") : "—")}</td><td>${estadoChip(r)}${r.lock && r.lock.until > Date.now() ? ` <span class="chip a">En uso: ${esc(r.lock.name)}</span>` : ""}</td><td>${r.tcCargada ? `<span class="chip g">${esc(r.tc.marca)}${S.user.role === "supervisor" || S.user.role === "cliente" ? " ···· " + esc(r.tc.last4) : ""}</span>` : ""}</td></tr>`).join("") || `<tr><td colspan="8" class="muted">No hay registros con esos filtros.</td></tr>`}
+    ${slice.map((r) => `<tr class="click" data-id="${r.id}" tabindex="0"><td><b>${esc(r.nombre)}</b></td><td>${esc(r.dni)}</td><td>${esc(fmtTel(r.telefonos.find((t) => !t.invalido)?.n || r.telefonos[0]?.n || ""))}${r.telefonos.length > 1 ? ` <span class="muted">+${r.telefonos.length - 1}</span>` : ""}</td><td>${esc(r.fuente)}</td><td class="n">${r.intentos}</td><td>${esc(r.ultima ? r.ultima.label + (r.ultima.sub ? " · " + r.ultima.sub : "") : "—")}</td><td>${estadoChip(r)}${r.lock && r.lock.until > Date.now() ? ` <span class="chip a">En uso: ${esc(r.lock.name)}</span>` : ""}</td><td>${r.tcCargada ? `<span class="chip g">${esc(r.tc.marca)}${["supervisor", "admin", "cliente"].includes(S.user.role) ? " ···· " + esc(r.tc.last4) : ""}</span>` : ""}</td></tr>`).join("") || `<tr><td colspan="8" class="muted">No hay registros con esos filtros.</td></tr>`}
     </tbody></table>
     <div class="pager"><span>${recs.length} registros</span><button class="btn" id="pp" ${basePage === 0 ? "disabled" : ""}>Anterior</button><span>Página ${basePage + 1} de ${pages}</span><button class="btn" id="pn" ${basePage >= pages - 1 ? "disabled" : ""}>Siguiente</button></div>
   </div></div>`;
@@ -708,7 +709,7 @@ async function viewCobros(m) {
 }
 function drawer(id, m) {
   const r = S.records.find((x) => x.id === id); if (!r) return;
-  const isSup = S.user.role === "supervisor";
+  const isSup = ["supervisor", "admin"].includes(S.user.role);
   const bg = document.createElement("div"); bg.className = "drawer-bg";
   const d = document.createElement("aside"); d.className = "drawer"; d.setAttribute("aria-label", "Detalle del registro");
   d.innerHTML = `
@@ -896,7 +897,7 @@ async function viewConfig(m) {
   const users = (await API("users")).users;
   const row = (u) => `<tr data-u="${esc(u.u)}"><td><input type="text" value="${esc(u.u)}" ${u.u ? "readonly" : ""} class="uu" placeholder="usuario"></td>
     <td><input type="text" value="${esc(u.name || "")}" class="un" placeholder="Nombre visible"></td>
-    <td><select class="ur">${["operador", "supervisor", "cliente"].map((r) => `<option ${u.role === r ? "selected" : ""}>${r}</option>`).join("")}</select></td>
+    <td><select class="ur">${["operador", "supervisor", "cliente", "admin"].map((r) => `<option ${u.role === r ? "selected" : ""}>${r}</option>`).join("")}</select></td>
     <td><select class="uq"><option value="">—</option><option value="1" ${u.quincena === 1 ? "selected" : ""}>1ª (1–15)</option><option value="2" ${u.quincena === 2 ? "selected" : ""}>2ª (16–fin)</option></select></td>
     <td><input type="checkbox" class="ua" ${u.activo !== false ? "checked" : ""} aria-label="Activo"></td>
     <td><input type="password" class="up" placeholder="${u.u ? "Sin cambios" : "Contraseña"}" autocomplete="new-password"></td>

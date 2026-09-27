@@ -1,0 +1,920 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Gestión · Recupero ABC Asistencias</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📞</text></svg>">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Public+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<style>
+:root{
+  --ink:#13303B; --ink2:#2B4C57; --muted:#5E7470; --paper:#EEF2F1; --surface:#FFFFFF; --line:#D3DDDA; --soft:#F6F8F8;
+  --green:#17775F; --green-bg:#E3F1EC; --amber:#A85C17; --amber-bg:#F8EDE0; --red:#A83232; --red-bg:#F7E4E4;
+  --vault:#1C2940; --vault2:#26365A; --focus:#2F7FD1;
+  --r-s:6px; --r-m:10px;
+  font-family:"Public Sans",system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+  font-variant-numeric:tabular-nums;
+}
+*{box-sizing:border-box}
+html,body{margin:0;background:var(--paper);color:var(--ink);font-size:15px;line-height:1.45}
+button,input,select,textarea{font:inherit;color:inherit}
+:focus-visible{outline:2px solid var(--focus);outline-offset:2px}
+.hidden{display:none!important}
+h1,h2,h3{margin:0;line-height:1.2}
+.muted{color:var(--muted)}
+.small{font-size:13px}
+.btn{border:1px solid var(--line);background:var(--surface);border-radius:var(--r-s);padding:8px 14px;cursor:pointer;font-weight:600}
+.btn:hover{border-color:var(--ink2)}
+.btn.primary{background:var(--ink);border-color:var(--ink);color:#fff}
+.btn.primary:hover{background:var(--ink2)}
+.btn.danger{color:var(--red);border-color:#e3bcbc}
+.btn.ghost{border-color:transparent;background:transparent}
+.btn:disabled{opacity:.45;cursor:not-allowed}
+input[type=text],input[type=password],input[type=number],input[type=datetime-local],input[type=search],select,textarea{
+  border:1px solid var(--line);border-radius:var(--r-s);padding:8px 10px;background:var(--surface);width:100%}
+textarea{resize:vertical;min-height:64px}
+label.f{display:block;font-size:13px;font-weight:600;color:var(--ink2);margin-bottom:4px}
+
+/* Top bar */
+header.top{display:flex;align-items:center;gap:16px;padding:10px 20px;background:var(--ink);color:#fff;flex-wrap:wrap}
+header.top .brand{font-weight:800;font-size:16px;letter-spacing:-.01em}
+header.top .brand span{font-weight:400;opacity:.7;margin-left:6px}
+header.top nav{display:flex;gap:2px;flex-wrap:wrap}
+header.top nav button{background:transparent;border:0;color:#cfe0de;padding:7px 12px;border-radius:var(--r-s);cursor:pointer;font-weight:600}
+header.top nav button.on{background:rgba(255,255,255,.14);color:#fff}
+header.top .who{margin-left:auto;display:flex;align-items:center;gap:12px;font-size:13px}
+header.top .who .btn{background:transparent;color:#fff;border-color:rgba(255,255,255,.3);padding:5px 10px}
+.stat-inline{display:flex;gap:14px;font-size:13px;color:#cfe0de}
+.stat-inline b{color:#fff;font-size:15px;margin-right:3px}
+
+main{padding:20px;max-width:1440px;margin:0 auto}
+
+/* Login */
+.login{min-height:100vh;display:grid;place-items:center;padding:20px}
+.login form{background:var(--surface);border:1px solid var(--line);border-radius:var(--r-m);padding:28px;width:min(380px,100%)}
+.login h1{font-size:22px;margin-bottom:4px}
+.login p{margin:0 0 20px}
+.login .row{margin-bottom:14px}
+
+/* Operador */
+.op-bar{display:flex;gap:10px;align-items:center;margin-bottom:16px;flex-wrap:wrap}
+.op-bar select{width:auto;min-width:200px}
+.op-bar .search{display:flex;gap:6px;margin-left:auto}
+.op-bar .search input{width:240px}
+.op-grid{display:grid;grid-template-columns:minmax(0,1.25fr) minmax(360px,1fr);gap:18px;align-items:start}
+@media (max-width:980px){.op-grid{grid-template-columns:1fr}}
+.panel{background:var(--surface);border:1px solid var(--line);border-radius:var(--r-m)}
+.panel > .hd{padding:14px 18px;border-bottom:1px solid var(--line);display:flex;align-items:center;gap:10px}
+.panel > .bd{padding:16px 18px}
+
+.ficha-head{padding:20px 20px 16px;border-bottom:1px solid var(--line)}
+.ficha-head .name{font-size:26px;font-weight:800;letter-spacing:-.02em}
+.ficha-head .meta{display:flex;gap:18px;margin-top:6px;flex-wrap:wrap;font-size:14px;color:var(--muted)}
+.ficha-head .meta b{color:var(--ink);font-weight:600}
+.chips{display:flex;gap:6px;flex-wrap:wrap;margin-top:10px}
+.chip{font-size:12px;font-weight:600;padding:3px 9px;border-radius:99px;background:var(--soft);border:1px solid var(--line)}
+.chip.g{background:var(--green-bg);border-color:#bfe0d4;color:var(--green)}
+.chip.a{background:var(--amber-bg);border-color:#ecd2b3;color:var(--amber)}
+.chip.r{background:var(--red-bg);border-color:#ebc5c5;color:var(--red)}
+.sec{padding:14px 20px;border-bottom:1px solid var(--line)}
+.sec:last-child{border-bottom:0}
+.sec h3{font-size:13px;font-weight:700;color:var(--ink2);margin-bottom:10px}
+
+.tel{display:flex;align-items:center;gap:10px;padding:8px 10px;border:1px solid var(--line);border-radius:var(--r-s);margin-bottom:6px}
+.tel.sel{border-color:var(--ink);box-shadow:inset 3px 0 0 var(--ink)}
+.tel.inv{opacity:.55;text-decoration:line-through}
+.tel .n{font-size:17px;font-weight:700;letter-spacing:.01em}
+.tel .o{font-size:12px;color:var(--muted)}
+.tel .act{margin-left:auto;display:flex;gap:4px}
+.tel .act .btn{padding:4px 8px;font-size:12px}
+.tel input[type=radio]{accent-color:var(--ink)}
+.add-tel{display:flex;gap:6px;margin-top:8px}
+
+.kv{display:grid;grid-template-columns:minmax(110px,max-content) 1fr;gap:4px 14px;font-size:14px}
+.kv dt{color:var(--muted)}
+.kv dd{margin:0;word-break:break-word}
+.notas{font-size:14px;background:var(--soft);border-radius:var(--r-s);padding:10px 12px;white-space:pre-wrap}
+
+.hist{list-style:none;margin:0;padding:0}
+.hist li{display:grid;grid-template-columns:120px 1fr;gap:10px;padding:8px 0;border-top:1px dashed var(--line);font-size:13px}
+.hist li:first-child{border-top:0}
+.hist .when{color:var(--muted)}
+.hist .t{font-weight:700}
+.hist .t.efectivo{color:var(--green)} .hist .t.no_efectivo{color:var(--amber)}
+
+/* Tipificación */
+.tip-cols{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.tip-col h4{margin:0 0 8px;font-size:13px;font-weight:800;padding-bottom:6px;border-bottom:3px solid}
+.tip-col.ne h4{color:var(--amber);border-color:var(--amber)}
+.tip-col.ef h4{color:var(--green);border-color:var(--green)}
+.tip-btn{display:block;width:100%;text-align:left;padding:8px 10px;margin-bottom:5px;border:1px solid var(--line);border-radius:var(--r-s);background:var(--surface);cursor:pointer;font-weight:500;font-size:14px}
+.tip-col.ne .tip-btn:hover{border-color:var(--amber)}
+.tip-col.ef .tip-btn:hover{border-color:var(--green)}
+.tip-col.ne .tip-btn.on{background:var(--amber);border-color:var(--amber);color:#fff;font-weight:700}
+.tip-col.ef .tip-btn.on{background:var(--green);border-color:var(--green);color:#fff;font-weight:700}
+.tip-btn .cl{float:right;font-size:11px;opacity:.7;font-weight:600;margin-top:2px}
+.subs{display:grid;gap:6px;margin:12px 0 0}
+.sub-btn{padding:9px 12px;border:1px dashed var(--green);border-radius:var(--r-s);background:var(--green-bg);cursor:pointer;text-align:left;font-weight:600;color:var(--green)}
+.sub-btn.on{background:var(--green);color:#fff;border-style:solid}
+.tip-extra{margin-top:14px;display:grid;gap:10px}
+.tip-foot{display:flex;gap:8px;margin-top:14px;align-items:center}
+.tip-foot .btn.primary{flex:1;padding:11px}
+.warn{background:var(--amber-bg);color:var(--amber);border-radius:var(--r-s);padding:8px 10px;font-size:13px;font-weight:600}
+
+/* Bóveda TC */
+.vault{background:var(--vault);color:#E8EEF8;border-radius:var(--r-m);padding:18px;margin-top:18px;position:relative;overflow:hidden}
+.vault::after{content:"";position:absolute;right:-40px;top:-40px;width:160px;height:160px;border-radius:50%;border:22px solid rgba(255,255,255,.04)}
+.vault h3{font-size:15px;font-weight:800;display:flex;align-items:center;gap:8px}
+.vault p{margin:4px 0 14px;font-size:13px;color:#aab8d0}
+.vault label.f{color:#c7d3e8}
+.vault input,.vault select{background:var(--vault2);border-color:#3b4e77;color:#fff}
+.vault input::placeholder{color:#8797b5}
+.vault .g2{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px}
+.vault .btn{background:#E8EEF8;color:var(--vault);border:0;width:100%;padding:10px}
+.vault .sealed{display:flex;align-items:center;gap:14px;padding:6px 0 2px}
+.vault .seal{width:46px;height:46px;border-radius:50%;background:#2E4A7A;display:grid;place-items:center;font-size:22px;flex:none}
+.vault .sealed b{font-size:16px;display:block}
+.vault .card-no{font-size:22px;letter-spacing:.12em;font-weight:700;margin:4px 0}
+
+.empty{padding:60px 20px;text-align:center}
+.empty h2{font-size:22px;margin-bottom:8px}
+.empty p{max-width:460px;margin:0 auto 18px;color:var(--muted)}
+
+/* Supervisor */
+.kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin-bottom:18px}
+.kpi{background:var(--surface);border:1px solid var(--line);border-radius:var(--r-m);padding:12px 14px}
+.kpi .v{font-size:26px;font-weight:800;letter-spacing:-.02em}
+.kpi .l{font-size:13px;color:var(--muted)}
+.kpi .s{font-size:12px;color:var(--ink2);margin-top:2px}
+.kpi.hl{background:var(--ink);color:#fff;border-color:var(--ink)} .kpi.hl .l,.kpi.hl .s{color:#b9d0cd}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:18px;margin-bottom:18px}
+@media (max-width:980px){.grid2{grid-template-columns:1fr}}
+.filters{display:flex;gap:10px;flex-wrap:wrap;align-items:end;margin-bottom:16px}
+.filters > div{min-width:150px}
+.filters .grow{flex:1}
+.bars .row{display:grid;grid-template-columns:170px 1fr 60px;gap:10px;align-items:center;font-size:13px;margin-bottom:6px}
+.bars .track{height:16px;background:var(--soft);border-radius:4px;overflow:hidden}
+.bars .fill{height:100%;background:var(--ink2)}
+.bars .fill.efectivo{background:var(--green)} .bars .fill.no_efectivo{background:var(--amber)} .bars .fill.cerrado{background:#7c8e8a}
+.bars .num{text-align:right;font-weight:700}
+.tbl-wrap{overflow-x:auto}
+table.t{width:100%;border-collapse:collapse;font-size:13px}
+table.t th{text-align:left;font-weight:700;color:var(--ink2);padding:8px 10px;border-bottom:2px solid var(--line);white-space:nowrap;background:var(--soft)}
+table.t td{padding:8px 10px;border-bottom:1px solid var(--line);vertical-align:top}
+table.t tr.click{cursor:pointer} table.t tr.click:hover td{background:var(--soft)}
+table.t td.n{text-align:right}
+.pager{display:flex;gap:8px;align-items:center;justify-content:flex-end;padding:10px 0 0;font-size:13px}
+svg.chart text{font-size:11px;fill:var(--muted);font-family:inherit}
+
+.drawer-bg{position:fixed;inset:0;background:rgba(19,48,59,.35);z-index:40}
+.drawer{position:fixed;top:0;right:0;bottom:0;width:min(560px,100%);background:var(--surface);z-index:41;overflow:auto;box-shadow:-8px 0 30px rgba(19,48,59,.2)}
+.drawer .bar{display:flex;gap:8px;padding:12px 20px;border-bottom:1px solid var(--line);position:sticky;top:0;background:var(--surface);z-index:1;flex-wrap:wrap}
+
+.drop{border:2px dashed var(--line);border-radius:var(--r-m);padding:30px;text-align:center;background:var(--surface);cursor:pointer}
+.drop:hover,.drop.over{border-color:var(--ink2);background:var(--soft)}
+.map-list{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:6px;font-size:13px}
+.map-list div{padding:6px 10px;border:1px solid var(--line);border-radius:var(--r-s);background:var(--surface)}
+.map-list b{display:block}
+
+.toast{position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:var(--ink);color:#fff;padding:10px 18px;border-radius:var(--r-s);z-index:60;font-weight:600;max-width:90vw}
+.toast.err{background:var(--red)}
+.search-res{position:absolute;background:var(--surface);border:1px solid var(--line);border-radius:var(--r-s);box-shadow:0 8px 24px rgba(19,48,59,.15);z-index:30;width:360px;max-height:360px;overflow:auto;margin-top:4px;right:0}
+.search-res button{display:block;width:100%;text-align:left;padding:8px 12px;border:0;border-bottom:1px solid var(--line);background:transparent;cursor:pointer}
+.search-res button:hover{background:var(--soft)}
+@media (prefers-reduced-motion:no-preference){ .vault .seal{animation:pop .35s ease-out} @keyframes pop{from{transform:scale(.6);opacity:0}to{transform:none;opacity:1}} }
+</style>
+</head>
+<body>
+<div id="app"></div>
+<script>
+/* ═══════════ Estado y API ═══════════ */
+const S = { token: sessionStorage.getItem("tok") || null, user: null, st: null, view: null, rec: null, form: {}, records: null, fuente: "", repFuente: "", repDesde: "", repHasta: "" };
+const $ = (s, el = document) => el.querySelector(s);
+const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+const fmtDT = (t) => t ? new Date(t).toLocaleString("es-AR", { day: "2-digit", month: "2-digit", year: "2-digit", hour: "2-digit", minute: "2-digit" }) : "";
+const fmtD = (t) => new Date(t).toLocaleDateString("es-AR", { day: "2-digit", month: "2-digit" });
+const pct = (a, b) => b ? (100 * a / b).toFixed(1).replace(".", ",") + "%" : "—";
+const fmtTel = (n) => {
+  n = String(n);
+  const m = n.match(/^(?:54)?9?(11|2\d{2,3}|3\d{2,3})(\d{6,8})$/);
+  if (!m) return n;
+  return `(${m[1]}) ${m[2].slice(0, m[2].length - 4)}-${m[2].slice(-4)}`;
+};
+const telHref = (n) => { n = String(n).replace(/^0/, ""); return "tel:" + (n.startsWith("54") ? "+" + n : n.length === 10 ? "+549" + n : n); };
+
+async function API(path, body, method) {
+  const r = await fetch("/api/" + path, {
+    method: method || (body ? "POST" : "GET"),
+    headers: { "content-type": "application/json", ...(S.token ? { authorization: "Bearer " + S.token } : {}) },
+    body: body ? JSON.stringify(body) : undefined,
+  });
+  const d = await r.json().catch(() => ({ error: "El servidor no respondió bien (" + r.status + ")." }));
+  if (r.status === 401 && path !== "login") { S.token = null; sessionStorage.removeItem("tok"); render(); throw new Error(d.error); }
+  if (!r.ok) throw new Error(d.error || "Error " + r.status);
+  return d;
+}
+function toast(msg, err) {
+  const t = document.createElement("div");
+  t.className = "toast" + (err ? " err" : ""); t.textContent = msg; t.setAttribute("role", "status");
+  document.body.appendChild(t); setTimeout(() => t.remove(), err ? 5000 : 2600);
+}
+async function run(fn, btn) {
+  if (btn) btn.disabled = true;
+  try { return await fn(); } catch (e) { toast(e.message, true); } finally { if (btn) btn.disabled = false; }
+}
+const TIPLIST = () => [...S.st.tips.no_efectivo.items.map((i) => ({ ...i, grupo: "no_efectivo" })), ...S.st.tips.efectivo.items.map((i) => ({ ...i, grupo: "efectivo" }))];
+const estadoChip = (r) => r.estado === "cerrado" ? `<span class="chip">Cerrado${r.motivoCierre ? ": " + esc(r.motivoCierre) : ""}</span>`
+  : r.intentos ? `<span class="chip a">En curso</span>` : `<span class="chip">Sin gestionar</span>`;
+
+/* ═══════════ Render principal ═══════════ */
+async function render() {
+  const app = $("#app");
+  if (!S.token) return renderLogin(app);
+  if (!S.st) {
+    try { S.st = await API("state"); S.user = S.st.user; } catch (e) { return; }
+    S.view = S.view || (S.user.role === "operador" ? "gestion" : "reporte");
+  }
+  const u = S.user, isSup = u.role === "supervisor", isCli = u.role === "cliente";
+  const tabs = u.role === "operador" ? [["gestion", "Gestión"], ["agenda", "Agenda"]]
+    : isSup ? [["reporte", "Reporte"], ["base", "Base"], ["cobros", "Cobros"], ["agenda", "Agenda"], ["gestion", "Gestionar"], ["carga", "Cargar base"], ["config", "Usuarios y configuración"]]
+    : [["reporte", "Reporte"], ["base", "Base"]];
+  const hoy = S.st.hoy;
+  app.innerHTML = `
+    <header class="top">
+      <div class="brand">ABC Asistencias<span>${esc(S.st.config.campaign.replace(/\s*—\s*ABC Asistencias/i, ""))}</span></div>
+      <nav>${tabs.map(([k, l]) => `<button data-v="${k}" class="${S.view === k ? "on" : ""}">${l}</button>`).join("")}</nav>
+      <div class="who">
+        ${hoy ? `<div class="stat-inline"><span><b>${hoy.gestiones}</b>gestiones hoy</span><span><b>${hoy.contactos}</b>contactos</span><span><b>${hoy.ventas}</b>ventas</span></div>` : ""}
+        <span>${esc(u.name)}${u.quincena ? ` · ${u.quincena === 1 ? "1ª" : "2ª"} quincena` : ""}</span>
+        <button class="btn" id="logout">Salir</button>
+      </div>
+    </header>
+    <main id="main"></main>`;
+  app.querySelectorAll("header nav button").forEach((b) => b.onclick = () => { S.view = b.dataset.v; render(); });
+  $("#logout").onclick = async () => { await API("logout", {}).catch(() => {}); S.token = null; S.st = null; S.rec = null; S.records = null; sessionStorage.removeItem("tok"); render(); };
+  const m = $("#main");
+  ({ gestion: viewGestion, agenda: viewAgenda, reporte: viewReporte, base: viewBase, cobros: viewCobros, carga: viewCarga, config: viewConfig }[S.view] || viewReporte)(m);
+}
+
+function renderLogin(app) {
+  app.innerHTML = `
+  <div class="login"><form id="lf">
+    <h1>Gestión de llamados</h1>
+    <p class="muted">Recupero de medio de pago · ABC Asistencias</p>
+    <div class="row"><label class="f" for="lu">Usuario</label><input id="lu" type="text" autocomplete="username" required autofocus></div>
+    <div class="row"><label class="f" for="lp">Contraseña</label><input id="lp" type="password" autocomplete="current-password" required></div>
+    <button class="btn primary" style="width:100%">Ingresar</button>
+  </form></div>`;
+  $("#lf").onsubmit = (e) => {
+    e.preventDefault();
+    run(async () => {
+      const d = await API("login", { u: $("#lu").value, p: $("#lp").value });
+      S.token = d.token; sessionStorage.setItem("tok", d.token); S.st = null; S.view = null; render();
+    }, e.submitter);
+  };
+}
+async function refreshState() { try { S.st = await API("state"); S.user = S.st.user; } catch (e) {} }
+
+/* ═══════════ Operador: gestión ═══════════ */
+function viewGestion(m) {
+  const fuentes = S.st.fuentes || [];
+  m.innerHTML = `
+    <div class="op-bar">
+      <select id="fsel" aria-label="Filtrar cola por fuente"><option value="">Todas las fuentes</option>${fuentes.map((f) => `<option ${S.fuente === f ? "selected" : ""}>${esc(f)}</option>`).join("")}</select>
+      <button class="btn primary" id="bnext">${S.rec ? "Siguiente registro" : "Tomar registro"}</button>
+      ${S.rec ? `<button class="btn" id="bskip">Liberar sin gestionar</button>` : ""}
+      <span class="small muted">Horario de gestión ${S.st.config.horaInicio} a ${S.st.config.horaFin} hs${S.st.enHorario ? "" : ` · <b style="color:var(--red)">ahora fuera de horario</b>`}${S.st.agendaVencida ? ` · <b style="color:var(--amber)">${S.st.agendaVencida} rellamados vencidos</b>` : ""}${S.st.abiertos != null ? ` · ${S.st.abiertos} registros abiertos` : ""}</span>
+      <div class="search" style="position:relative">
+        <input type="search" id="q" placeholder="Buscar DNI, teléfono o nombre">
+        <button class="btn" id="bq">Buscar</button>
+        <div id="qres"></div>
+      </div>
+    </div>
+    <div id="work"></div>`;
+  $("#fsel").onchange = (e) => S.fuente = e.target.value;
+  $("#bnext").onclick = (e) => run(async () => {
+    if (S.rec) await API("liberar", { id: S.rec.id }).catch(() => {});
+    const d = await API("next", { fuente: S.fuente });
+    S.rec = d.record; S.form = {};
+    if (!d.record) toast("No hay registros disponibles para llamar ahora.");
+    viewGestion(m);
+  }, e.target);
+  if ($("#bskip")) $("#bskip").onclick = (e) => run(async () => { await API("liberar", { id: S.rec.id }); S.rec = null; S.form = {}; viewGestion(m); }, e.target);
+  const doSearch = () => run(async () => {
+    const d = await API("buscar", { q: $("#q").value });
+    $("#qres").innerHTML = `<div class="search-res">${d.results.length ? d.results.map((r) => `<button data-id="${r.id}"><b>${esc(r.nombre)}</b> <span class="small muted">DNI ${esc(r.dni)} · ${r.estado.replace("_", " ")}${r.ultima ? " · " + esc(r.ultima) : ""}${r.lock ? " · en uso por " + esc(r.lock) : ""}</span></button>`).join("") : `<div style="padding:12px" class="small muted">Sin resultados.</div>`}</div>`;
+    $("#qres").querySelectorAll("button").forEach((b) => b.onclick = () => openRec(b.dataset.id, m));
+  });
+  $("#bq").onclick = doSearch;
+  $("#q").onkeydown = (e) => { if (e.key === "Enter") doSearch(); if (e.key === "Escape") $("#qres").innerHTML = ""; };
+  renderWork($("#work"));
+}
+async function openRec(id, m) {
+  await run(async () => {
+    if (S.rec && S.rec.id !== id) await API("liberar", { id: S.rec.id }).catch(() => {});
+    const d = await API("abrir", { id });
+    S.rec = d.record; S.form = {}; S.view = "gestion"; render();
+  });
+}
+
+function renderWork(w) {
+  const r = S.rec;
+  if (!r) {
+    w.innerHTML = `<div class="panel empty"><h2>Listo para llamar</h2><p>Tomá un registro de la cola. Primero salen los rellamados vencidos y después los que tienen menos intentos.</p><button class="btn primary" id="bnext2">Tomar registro</button></div>`;
+    $("#bnext2").onclick = () => $("#bnext").click();
+    return;
+  }
+  const F = S.form;
+  const tels = r.telefonos;
+  if (!F.tel || !tels.some((t) => t.n === F.tel)) F.tel = (tels.find((t) => !t.invalido) || tels[0] || {}).n;
+  const dataRows = Object.entries(r.data || {}).filter(([, v]) => String(v).trim());
+  const max = S.st.config.maxIntentos;
+  const hoyN = llamadosHoy(r);
+  w.innerHTML = `
+  <div class="op-grid">
+    <section class="panel" aria-label="Ficha del cliente">
+      <div class="ficha-head">
+        <div class="name">${esc(r.nombre || "Sin nombre")}</div>
+        <div class="meta"><span>DNI <b>${esc(r.dni || "—")}</b></span><span>Fuente <b>${esc((r.fuentes || [r.fuente]).join(", "))}</b></span><span>Intentos <b>${r.intentos}</b> · sin contacto <b>${r.sinContacto}/${max}</b></span><span>Llamados hoy <b>${hoyN}/${S.st.config.maxDiarios}</b></span></div>
+        <div class="chips">
+          ${estadoChip(r)}
+          ${r.franja ? `<span class="chip a">Pidió turno ${r.franja}</span>` : ""}
+          ${r.agenda ? `<span class="chip g">Rellamar ${fmtDT(r.agenda.at)}${r.agenda.nota ? ": " + esc(r.agenda.nota) : ""}</span>` : ""}
+          ${r.ultima ? `<span class="chip">Última: ${esc(r.ultima.label)}${r.ultima.sub ? " (" + esc(r.ultima.sub) + ")" : ""} · ${fmtDT(r.ultima.at)}</span>` : ""}
+        </div>
+      </div>
+      <div class="sec">
+        <h3>Teléfonos</h3>
+        ${tels.length ? tels.map((t) => `
+          <div class="tel ${t.n === F.tel ? "sel" : ""} ${t.invalido ? "inv" : ""}">
+            <input type="radio" name="tel" value="${t.n}" ${t.n === F.tel ? "checked" : ""} aria-label="Usar ${t.n}">
+            <div><div class="n"><a href="${telHref(t.n)}" style="color:inherit;text-decoration:none">${esc(fmtTel(t.n))}</a></div>
+            <div class="o">${t.origen === "operador" ? `Agregado por ${esc(t.by)} el ${fmtD(t.at)}${t.nota ? " · " + esc(t.nota) : ""}` : "De la base"}</div></div>
+            <div class="act">
+              <button class="btn" data-inv="${t.n}" data-val="${t.invalido ? "" : "1"}">${t.invalido ? "Reactivar" : "Erróneo"}</button>
+            </div>
+          </div>`).join("") : `<p class="muted small">Este registro no tiene teléfonos. Agregá uno para poder llamar.</p>`}
+        <div class="add-tel">
+          <input type="text" id="ntel" inputmode="tel" placeholder="Nuevo teléfono con característica (ej. 1155551234)">
+          <input type="text" id="ntelnota" placeholder="Nota (ej. celular del hijo)" style="max-width:200px">
+          <button class="btn" id="baddtel">Agregar</button>
+        </div>
+      </div>
+      <div class="sec">
+        <h3>Tarjeta anterior</h3>
+        <div class="kv"><dt>Número</dt><dd><b>${esc(r.tcAnterior || "No informada")}</b></dd></div>
+      </div>
+      ${dataRows.length ? `<div class="sec"><h3>Datos de la base</h3><dl class="kv">${dataRows.map(([k, v]) => `<dt>${esc(k)}</dt><dd>${esc(v)}</dd>`).join("")}</dl></div>` : ""}
+      ${r.notas ? `<div class="sec"><h3>Observaciones previas</h3><div class="notas">${esc(r.notas)}</div></div>` : ""}
+      <div class="sec"><h3>Historial de gestiones</h3>
+        ${r.hist.length ? `<ul class="hist">${[...r.hist].reverse().map((h) => `<li><span class="when">${fmtDT(h.at)}<br>${esc(h.byName)}</span><div><span class="t ${h.grupo}">${esc(h.label)}${h.sub ? " · " + esc(h.sub) : ""}</span>${h.tel ? ` <span class="muted">al ${esc(fmtTel(h.tel))}</span>` : ""}${h.cierre ? ` <span class="chip">Cierra: ${esc(h.cierre)}</span>` : ""}${h.obs ? `<div>${esc(h.obs)}</div>` : ""}</div></li>`).join("")}</ul>` : `<p class="muted small">Todavía no tiene gestiones.</p>`}
+      </div>
+    </section>
+
+    <section aria-label="Tipificación">
+      <div class="panel">
+        <div class="hd"><h2 style="font-size:17px">Resultado del llamado</h2></div>
+        <div class="bd">
+          <div class="tip-cols">
+            ${["no_efectivo", "efectivo"].map((g) => `
+              <div class="tip-col ${g === "efectivo" ? "ef" : "ne"}">
+                <h4>${S.st.tips[g].label}</h4>
+                ${S.st.tips[g].items.map((i) => `<button class="tip-btn ${F.grupo === g && F.k === i.k ? "on" : ""}" data-g="${g}" data-k="${i.k}">${esc(i.label)}${i.cierra ? `<span class="cl">cierra</span>` : i.agenda ? `<span class="cl">agenda</span>` : ""}</button>`).join("")}
+              </div>`).join("")}
+          </div>
+          <div id="tipx"></div>
+        </div>
+      </div>
+      <div class="vault" id="vault"></div>
+    </section>
+  </div>`;
+
+  w.querySelectorAll('input[name=tel]').forEach((i) => i.onchange = () => { F.tel = i.value; renderWork(w); });
+  w.querySelectorAll("[data-inv]").forEach((b) => b.onclick = () => run(async () => {
+    const d = await API("telefono", { id: r.id, accion: "invalido", n: b.dataset.inv, valor: !!b.dataset.val });
+    S.rec = d.record; renderWork(w);
+  }, b));
+  $("#baddtel").onclick = (e) => run(async () => {
+    const d = await API("telefono", { id: r.id, accion: "agregar", n: $("#ntel").value, nota: $("#ntelnota").value });
+    S.rec = d.record; F.tel = d.record.telefonos[d.record.telefonos.length - 1].n; toast("Teléfono guardado en el registro."); renderWork(w);
+  }, e.target);
+  w.querySelectorAll(".tip-btn").forEach((b) => b.onclick = () => { F.grupo = b.dataset.g; F.k = b.dataset.k; if (F.k !== "venta") F.sub = null; renderWork(w); });
+  renderTipExtra($("#tipx"), w);
+  renderVault($("#vault"), w);
+}
+
+function llamadosHoy(r) {
+  const d = new Date(Date.now() - 3 * 3600e3), t0 = Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()) + 3 * 3600e3;
+  return r.hist.filter((h) => h.grupo !== "sistema" && h.at >= t0).length;
+}
+function renderTipExtra(x, w) {
+  const F = S.form, r = S.rec;
+  const ultimoDelDia = llamadosHoy(r) + 1 >= S.st.config.maxDiarios;
+  const def = F.k ? S.st.tips[F.grupo].items.find((i) => i.k === F.k) : null;
+  const willCloseByCap = def && F.grupo === "no_efectivo" && !def.cierra && def.k !== "datos_erroneos" && r.sinContacto + 1 >= S.st.config.maxIntentos;
+  const minDT = new Date(Date.now() - new Date().getTimezoneOffset() * 60e3).toISOString().slice(0, 16);
+  x.innerHTML = `
+    ${def?.subs ? `<div class="subs" role="group" aria-label="Producto vendido">${def.subs.map((s) => `<button class="sub-btn ${F.sub === s ? "on" : ""}" data-s="${esc(s)}">${esc(s)}</button>`).join("")}</div>` : ""}
+    <div class="tip-extra">
+      ${def?.venta && !r.tcCargada ? `<div class="warn">Para registrar la venta, primero guardá la tarjeta nueva en el bloque de abajo.</div>` : ""}
+      ${def?.franja && def.franja !== "TM" ? `<div class="warn">${def.label} queda fuera del horario de la campaña (${S.st.config.horaInicio} a ${S.st.config.horaFin} hs). Se registra como no efectivo y el registro sigue en la cola normal.</div>` : ""}
+      ${willCloseByCap ? `<div class="warn">Es el intento ${r.sinContacto + 1} de ${S.st.config.maxIntentos} sin contacto: el registro se cierra al guardar.</div>` : ""}
+      ${def && !def.cierra && !def.agenda && !willCloseByCap && ultimoDelDia ? `<div class="small muted">Es el llamado ${llamadosHoy(r) + 1} de ${S.st.config.maxDiarios} del día: si no se cierra, vuelve a salir mañana.</div>` : def && !def.cierra && !def.agenda && !willCloseByCap ? `<div class="small muted">Vuelve a salir en ${S.st.config.minEntreIntentos} minutos como mínimo.</div>` : ""}
+      ${def?.k === "datos_erroneos" ? `<div class="small muted">Marca el teléfono seleccionado como erróneo. Si no quedan teléfonos válidos, el registro se cierra.</div>` : ""}
+      ${def?.agenda ? `<div><label class="f" for="agat">Volver a llamar el ${def.agenda === "opcional" ? "(opcional)" : ""} · entre ${S.st.config.horaInicio} y ${S.st.config.horaFin} hs</label><input type="datetime-local" id="agat" min="${minDT}" value="${F.agendaAt || ""}"></div>` : ""}
+      <div><label class="f" for="obs">Observación</label><textarea id="obs" placeholder="Qué dijo el cliente, datos para el próximo llamado">${esc(F.obs || "")}</textarea></div>
+    </div>
+    <div class="tip-foot">
+      <button class="btn primary" id="bsave" ${!def ? "disabled" : ""}>Guardar gestión${def ? ": " + esc(def.label) : ""}</button>
+    </div>`;
+  x.querySelectorAll(".sub-btn").forEach((b) => b.onclick = () => { F.sub = b.dataset.s; renderTipExtra(x, w); });
+  const obs = $("#obs"); obs.oninput = () => F.obs = obs.value;
+  if ($("#agat")) $("#agat").onchange = (e) => F.agendaAt = e.target.value;
+  $("#bsave").onclick = (e) => run(async () => {
+    if (def.subs && !F.sub) throw new Error("Elegí el producto vendido.");
+    const agendaAt = F.agendaAt ? new Date(F.agendaAt).toISOString() : null;
+    if (agendaAt) { const hh = new Date(F.agendaAt).getHours() + new Date(F.agendaAt).getMinutes() / 60; if (hh < S.st.config.horaInicio || hh >= S.st.config.horaFin) throw new Error(`El rellamado tiene que quedar entre las ${S.st.config.horaInicio} y las ${S.st.config.horaFin} hs.`); }
+    const d = await API("tipificar", { id: r.id, grupo: F.grupo, k: F.k, sub: F.sub, obs: F.obs || "", tel: F.tel, agendaAt });
+    const rr = d.record;
+    toast(`Guardado: ${def.label}${rr.estado === "cerrado" ? " · registro cerrado" : ""}`);
+    S.rec = null; S.form = {};
+    await refreshState(); render();
+  }, e.target);
+}
+
+function renderVault(v, w) {
+  const r = S.rec, F = S.form, isSup = S.user.role === "supervisor";
+  if (r.tcCargada && !(isSup && F.tcEdit)) {
+    v.innerHTML = `
+      <h3>Tarjeta nueva</h3>
+      <div class="sealed"><div class="seal" aria-hidden="true">🔒</div><div>
+        <b>Tarjeta guardada y bloqueada</b>
+        <span class="small" style="color:#aab8d0">${esc(r.tc.marca)}${isSup ? ` terminada en ${esc(r.tc.last4)} · ${esc(r.tc.banco)}` : ""} · cargada por ${esc(r.tc.by)} el ${fmtDT(r.tc.at)}</span>
+      </div></div>
+      ${isSup ? `<div class="g2" style="margin-top:14px"><button class="btn" id="brev">Ver número completo</button><button class="btn" id="bedit">Reemplazar tarjeta</button></div><div id="revd"></div>` : `<p style="margin:12px 0 0">Si hay un error en los datos, avisale al supervisor: sólo él puede reemplazarla.</p>`}`;
+    if (isSup) {
+      $("#brev").onclick = (e) => run(async () => {
+        const d = await API("tc-reveal", { id: r.id });
+        $("#revd").innerHTML = `<div class="card-no">${esc(d.tc.numero.replace(/(.{4})/g, "$1 ").trim())}</div><div class="small">${esc(d.tc.marca)} · ${esc(d.tc.banco)}${d.tc.vto ? " · vto " + esc(d.tc.vto) : ""}</div>`;
+        setTimeout(() => { const el = $("#revd"); if (el) el.innerHTML = ""; }, 30000);
+      }, e.target);
+      $("#bedit").onclick = () => { F.tcEdit = true; renderVault(v, w); };
+    }
+    return;
+  }
+  v.innerHTML = `
+    <h3>Tarjeta nueva</h3>
+    <p>Al guardar, los datos quedan cifrados y ya no se pueden ver ni modificar desde esta pantalla.</p>
+    <div class="g2">
+      <div><label class="f" for="tcm">Marca</label><select id="tcm"><option value="">Elegir…</option>${S.st.marcas.map((m) => `<option>${m}</option>`).join("")}</select></div>
+      <div><label class="f" for="tcb">Banco</label><input type="text" id="tcb" list="bancos" autocomplete="off" placeholder="Banco emisor"></div>
+    </div>
+    <div class="g2">
+      <div><label class="f" for="tcn">Número de tarjeta</label><input type="text" id="tcn" inputmode="numeric" autocomplete="off" placeholder="0000 0000 0000 0000"></div>
+      <div><label class="f" for="tcv">Vencimiento (opcional)</label><input type="text" id="tcv" inputmode="numeric" autocomplete="off" placeholder="MM/AA"></div>
+    </div>
+    <datalist id="bancos">${["Banco Nación", "Banco Provincia", "Galicia", "Santander", "BBVA", "Macro", "HSBC", "ICBC", "Credicoop", "Banco Ciudad", "Patagonia", "Supervielle", "Comafi", "Hipotecario", "Banco del Chubut", "Banco de Córdoba", "Banco Santa Fe", "Banco Entre Ríos", "Brubank", "Naranja X", "Mercado Pago"].map((b) => `<option>${b}</option>`).join("")}</datalist>
+    <button class="btn" id="btc">Guardar tarjeta</button>
+    ${F.tcEdit ? `<button class="btn ghost" id="btcc" style="color:#c7d3e8;margin-top:6px">Cancelar reemplazo</button>` : ""}`;
+  const n = $("#tcn");
+  n.oninput = () => {
+    const d = n.value.replace(/\D/g, "").slice(0, 19);
+    n.value = d.replace(/(.{4})/g, "$1 ").trim();
+    const m = $("#tcm");
+    if (!m.value) { if (/^4/.test(d)) m.value = "Visa"; else if (/^3[47]/.test(d)) m.value = "American Express"; else if (/^(5[1-5]|2[2-7])/.test(d)) m.value = "Mastercard"; else if (/^5895/.test(d)) m.value = "Naranja"; }
+  };
+  $("#tcv").oninput = (e) => { let d = e.target.value.replace(/\D/g, "").slice(0, 4); e.target.value = d.length > 2 ? d.slice(0, 2) + "/" + d.slice(2) : d; };
+  if ($("#btcc")) $("#btcc").onclick = () => { F.tcEdit = false; renderVault(v, w); };
+  $("#btc").onclick = (e) => run(async () => {
+    const payload = { id: r.id, numero: n.value, banco: $("#tcb").value, marca: $("#tcm").value, vto: $("#tcv").value };
+    const d = await API("tc", payload);
+    n.value = ""; payload.numero = null;
+    S.rec = d.record; F.tcEdit = false;
+    toast("Tarjeta guardada y bloqueada.");
+    renderWork(w);
+  }, e.target);
+}
+
+/* ═══════════ Agenda ═══════════ */
+async function viewAgenda(m) {
+  m.innerHTML = `<div class="panel"><div class="hd"><h2 style="font-size:17px">Rellamados agendados</h2></div><div class="bd" id="ag">Cargando…</div></div>`;
+  const d = await API("agenda").catch((e) => { toast(e.message, true); return { items: [] }; });
+  const now = Date.now();
+  $("#ag").innerHTML = d.items.length ? `<div class="tbl-wrap"><table class="t"><thead><tr><th>Cuándo</th><th>Cliente</th><th>DNI</th><th>Última gestión</th><th>Nota</th><th>Agendó</th><th></th></tr></thead><tbody>
+    ${d.items.map((r) => `<tr><td>${r.agenda.at <= now ? `<span class="chip a">Vencido</span> ` : ""}${fmtDT(r.agenda.at)}</td><td><b>${esc(r.nombre)}</b></td><td>${esc(r.dni)}</td><td>${esc(r.ultima || "")}</td><td>${esc(r.agenda.nota || "")}</td><td>${esc(r.agenda.by || "")}</td>
+    <td>${S.user.role !== "cliente" ? (r.lock ? `<span class="small muted">En uso por ${esc(r.lock)}</span>` : `<button class="btn" data-id="${r.id}">Abrir</button>`) : ""}</td></tr>`).join("")}
+  </tbody></table></div>` : `<p class="muted">No hay rellamados agendados. Aparecen acá cuando se tipifica "Volver a llamar" o "Interesado" con fecha.</p>`;
+  m.querySelectorAll("[data-id]").forEach((b) => b.onclick = () => openRec(b.dataset.id, m));
+}
+
+/* ═══════════ Datos para reporte ═══════════ */
+async function loadRecords(force) {
+  if (!S.records || force) S.records = (await API("records")).items;
+  return S.records;
+}
+function filtRecs() {
+  return (S.records || []).filter((r) => !S.repFuente || (r.fuentes || [r.fuente]).includes(S.repFuente));
+}
+function histInRange(recs) {
+  const d0 = S.repDesde ? new Date(S.repDesde + "T00:00:00").getTime() : 0;
+  const d1 = S.repHasta ? new Date(S.repHasta + "T23:59:59").getTime() : Infinity;
+  const out = [];
+  for (const r of recs) for (const h of r.hist) if (h.grupo !== "sistema" && h.at >= d0 && h.at <= d1) out.push({ ...h, rec: r });
+  return out;
+}
+function filterBar(showDates = true) {
+  const fuentes = [...new Set((S.records || []).flatMap((r) => r.fuentes || [r.fuente]))].sort();
+  return `<div class="filters">
+    <div><label class="f" for="rf">Fuente</label><select id="rf"><option value="">Todas</option>${fuentes.map((f) => `<option ${S.repFuente === f ? "selected" : ""}>${esc(f)}</option>`).join("")}</select></div>
+    ${showDates ? `<div><label class="f" for="rd">Gestiones desde</label><input type="date" id="rd" value="${S.repDesde}"></div>
+    <div><label class="f" for="rh">Hasta</label><input type="date" id="rh" value="${S.repHasta}"></div>` : ""}
+    <div class="grow"></div>
+    <button class="btn" id="bref">Actualizar datos</button>
+    <button class="btn" id="bexp">Exportar Excel</button>
+    ${S.user.role === "supervisor" ? `<button class="btn" id="bexptc">Exportar ventas con tarjeta</button>` : ""}
+  </div>`;
+}
+function bindFilters(m, rerender) {
+  $("#rf").onchange = (e) => { S.repFuente = e.target.value; rerender(m); };
+  if ($("#rd")) $("#rd").onchange = (e) => { S.repDesde = e.target.value; rerender(m); };
+  if ($("#rh")) $("#rh").onchange = (e) => { S.repHasta = e.target.value; rerender(m); };
+  $("#bref").onclick = (e) => run(async () => { await loadRecords(true); rerender(m); }, e.target);
+  $("#bexp").onclick = () => exportExcel();
+  if ($("#bexptc")) $("#bexptc").onclick = (e) => run(exportTC, e.target);
+}
+function bars(rows, cls) {
+  const max = Math.max(1, ...rows.map((r) => r[1]));
+  return `<div class="bars">${rows.map(([l, v, c]) => `<div class="row"><span>${esc(l)}</span><div class="track"><div class="fill ${c || cls || ""}" style="width:${(100 * v / max).toFixed(1)}%"></div></div><span class="num">${v}</span></div>`).join("") || `<p class="muted small">Sin datos.</p>`}</div>`;
+}
+function dayChart(hist) {
+  const by = {};
+  for (const h of hist) { const k = new Date(h.at).toISOString().slice(0, 10); (by[k] ||= { ef: 0, ne: 0 }); h.grupo === "efectivo" ? by[k].ef++ : by[k].ne++; }
+  const days = Object.keys(by).sort().slice(-31);
+  if (!days.length) return `<p class="muted small">Sin gestiones en el período.</p>`;
+  const W = 640, H = 200, pad = 26, bw = Math.min(28, (W - pad * 2) / days.length - 4);
+  const max = Math.max(...days.map((d) => by[d].ef + by[d].ne));
+  const y = (v) => (H - 30) * v / max;
+  return `<svg class="chart" viewBox="0 0 ${W} ${H}" width="100%" role="img" aria-label="Gestiones por día">
+    ${days.map((d, i) => { const x = pad + i * ((W - pad * 2) / days.length); const ne = y(by[d].ne), ef = y(by[d].ef);
+      return `<g><title>${d.slice(8)}/${d.slice(5, 7)}: ${by[d].ef} efectivas, ${by[d].ne} no efectivas</title>
+      <rect x="${x}" y="${H - 20 - ne}" width="${bw}" height="${ne}" fill="#A85C17"/>
+      <rect x="${x}" y="${H - 20 - ne - ef}" width="${bw}" height="${ef}" fill="#17775F"/>
+      <text x="${x + bw / 2}" y="${H - 6}" text-anchor="middle">${d.slice(8)}/${d.slice(5, 7)}</text>
+      <text x="${x + bw / 2}" y="${H - 24 - ne - ef}" text-anchor="middle">${by[d].ef + by[d].ne}</text></g>`; }).join("")}
+  </svg><div class="small muted" style="margin-top:6px"><span style="color:var(--green)">■</span> Efectivas &nbsp; <span style="color:var(--amber)">■</span> No efectivas</div>`;
+}
+
+/* ═══════════ Reporte ═══════════ */
+async function viewReporte(m) {
+  if (!S.records) { m.innerHTML = `<p class="muted">Cargando datos…</p>`; try { await loadRecords(); } catch (e) { return; } }
+  const recs = filtRecs(), hist = histInRange(recs);
+  const gest = recs.filter((r) => r.intentos > 0), cont = recs.filter((r) => r.contactado);
+  const ventas = recs.filter((r) => r.ultima?.k === "venta");
+  const cerr = recs.filter((r) => r.estado === "cerrado");
+  const tope = cerr.filter((r) => r.motivoCierre === "Tope de intentos sin contacto");
+  const agend = recs.filter((r) => r.estado !== "cerrado" && r.agenda);
+  const hEf = hist.filter((h) => h.grupo === "efectivo");
+  const hV = hist.filter((h) => h.k === "venta");
+  const avgInt = gest.length ? (gest.reduce((a, r) => a + r.intentos, 0) / gest.length).toFixed(1).replace(".", ",") : "—";
+
+  // Pipeline: último resultado de cada registro
+  const pipe = {};
+  for (const r of recs) { const k = r.ultima ? r.ultima.label : "Sin gestionar"; pipe[k] = (pipe[k] || 0) + 1; }
+  const tipOrder = ["Sin gestionar", ...TIPLIST().map((t) => t.label)];
+  const tipGroup = Object.fromEntries(TIPLIST().map((t) => [t.label, t.grupo]));
+  const pipeRows = tipOrder.filter((k) => pipe[k]).map((k) => [k, pipe[k], tipGroup[k]]);
+  // Tipificaciones del período
+  const tp = {}; for (const h of hist) tp[h.label] = (tp[h.label] || 0) + 1;
+  const tpRows = tipOrder.filter((k) => tp[k]).map((k) => [k, tp[k], tipGroup[k]]);
+  // Por operador
+  const ops = {};
+  for (const h of hist) { const o = (ops[h.byName] ||= { g: 0, ef: 0, v: 0, q: new Set() }); o.g++; if (h.grupo === "efectivo") o.ef++; if (h.k === "venta") o.v++; if (h.q) o.q.add(h.q); }
+  // Ventas por producto
+  const vp = {}; for (const h of hV) vp[h.sub || "Sin detalle"] = (vp[h.sub || "Sin detalle"] || 0) + 1;
+  // Contactabilidad por franja
+  const c0 = S.st.config.horaInicio, c1 = S.st.config.horaFin, fr = {};
+  for (let x = c0; x < c1; x++) fr[`${x} a ${x + 1} hs`] = [0, 0];
+  fr["Fuera de horario"] = [0, 0];
+  for (const h of hist) { const hr = new Date(h.at - 3 * 3600e3).getUTCHours(); const k = hr >= c0 && hr < c1 ? `${hr} a ${hr + 1} hs` : "Fuera de horario"; fr[k][0]++; if (h.grupo === "efectivo") fr[k][1]++; }
+  if (!fr["Fuera de horario"][0]) delete fr["Fuera de horario"];
+  // Por fuente
+  const fu = {};
+  for (const r of S.records) for (const f of r.fuentes || [r.fuente]) { const o = (fu[f] ||= { n: 0, g: 0, c: 0, v: 0, cerr: 0 }); o.n++; if (r.intentos) o.g++; if (r.contactado) o.c++; if (r.ultima?.k === "venta") o.v++; if (r.estado === "cerrado") o.cerr++; }
+
+  m.innerHTML = `${filterBar()}
+  <div class="kpis">
+    <div class="kpi"><div class="v">${recs.length}</div><div class="l">Registros en base</div><div class="s">${recs.length - gest.length} sin gestionar</div></div>
+    <div class="kpi"><div class="v">${gest.length}</div><div class="l">Gestionados</div><div class="s">${pct(gest.length, recs.length)} de la base · ${avgInt} intentos prom.</div></div>
+    <div class="kpi"><div class="v">${cont.length}</div><div class="l">Contactados</div><div class="s">Contactabilidad ${pct(cont.length, gest.length)}</div></div>
+    <div class="kpi hl"><div class="v">${ventas.length}</div><div class="l">Ventas (medio de pago recuperado)</div><div class="s">Conversión ${pct(ventas.length, cont.length)} sobre contactados</div></div>
+    <div class="kpi"><div class="v">${cerr.length}</div><div class="l">Cerrados</div><div class="s">${tope.length} por tope de ${S.st.config.maxIntentos} intentos</div></div>
+    <div class="kpi"><div class="v">${agend.length}</div><div class="l">Rellamados pendientes</div><div class="s">${agend.filter((r) => r.agenda.at <= Date.now()).length} vencidos</div></div>
+    <div class="kpi"><div class="v">${hist.length}</div><div class="l">Gestiones en el período</div><div class="s">${hEf.length} efectivas · ${hV.length} ventas</div></div>
+  </div>
+  <div class="panel" style="margin-bottom:18px"><div class="hd"><h3>Gestiones por día</h3></div><div class="bd">${dayChart(hist)}</div></div>
+  <div class="grid2">
+    <div class="panel"><div class="hd"><h3>Estado actual de la base (último resultado)</h3></div><div class="bd">${bars(pipeRows)}</div></div>
+    <div class="panel"><div class="hd"><h3>Tipificaciones del período</h3></div><div class="bd">${bars(tpRows)}</div></div>
+  </div>
+  <div class="grid2">
+    <div class="panel"><div class="hd"><h3>Por operador</h3></div><div class="bd tbl-wrap"><table class="t"><thead><tr><th>Operador</th><th>Quincena</th><th class="n">Gestiones</th><th class="n">Efectivas</th><th class="n">% contacto</th><th class="n">Ventas</th><th class="n">Conv.</th></tr></thead><tbody>
+      ${Object.entries(ops).map(([n, o]) => `<tr><td><b>${esc(n)}</b></td><td>${[...o.q].sort().map((q) => q === 1 ? "1ª" : "2ª").join(", ")}</td><td class="n">${o.g}</td><td class="n">${o.ef}</td><td class="n">${pct(o.ef, o.g)}</td><td class="n">${o.v}</td><td class="n">${pct(o.v, o.ef)}</td></tr>`).join("") || `<tr><td colspan="7" class="muted">Sin gestiones en el período.</td></tr>`}
+    </tbody></table></div></div>
+    <div class="panel"><div class="hd"><h3>Ventas por producto</h3></div><div class="bd">${bars(Object.entries(vp).sort((a, b) => b[1] - a[1]), "efectivo")}</div></div>
+  </div>
+  <div class="grid2">
+    <div class="panel"><div class="hd"><h3>Contactabilidad por hora</h3></div><div class="bd tbl-wrap"><table class="t"><thead><tr><th>Hora</th><th class="n">Gestiones</th><th class="n">Efectivas</th><th class="n">% contacto</th></tr></thead><tbody>
+      ${Object.entries(fr).map(([k, [g, e]]) => `<tr><td>${k}</td><td class="n">${g}</td><td class="n">${e}</td><td class="n">${pct(e, g)}</td></tr>`).join("")}
+    </tbody></table></div></div>
+    <div class="panel"><div class="hd"><h3>Comparativo por fuente</h3></div><div class="bd tbl-wrap"><table class="t"><thead><tr><th>Fuente</th><th class="n">Registros</th><th class="n">Gestionados</th><th class="n">Contactab.</th><th class="n">Ventas</th><th class="n">Conv.</th><th class="n">Cerrados</th></tr></thead><tbody>
+      ${Object.entries(fu).map(([k, o]) => `<tr><td><b>${esc(k)}</b></td><td class="n">${o.n}</td><td class="n">${o.g}</td><td class="n">${pct(o.c, o.g)}</td><td class="n">${o.v}</td><td class="n">${pct(o.v, o.c)}</td><td class="n">${o.cerr}</td></tr>`).join("") || `<tr><td colspan="7" class="muted">Sin base cargada.</td></tr>`}
+    </tbody></table></div></div>
+  </div>`;
+  bindFilters(m, viewReporte);
+}
+
+/* ═══════════ Base (tabla) ═══════════ */
+let basePage = 0, baseQ = "", baseEstado = "", baseTip = "";
+let cobrosPage = 0, cobrosQ = "";
+async function viewBase(m) {
+  if (!S.records) { m.innerHTML = `<p class="muted">Cargando datos…</p>`; try { await loadRecords(); } catch (e) { return; } }
+  const q = baseQ.toLowerCase(), qd = q.replace(/\D/g, "");
+  let recs = filtRecs().filter((r) => {
+    if (baseEstado) { const e = r.estado === "cerrado" ? "cerrado" : r.intentos ? "en_curso" : "pendiente"; if (baseEstado === "agendado" ? !(r.agenda && r.estado !== "cerrado") : e !== baseEstado) return false; }
+    if (baseTip && (r.ultima?.label || "Sin gestionar") !== baseTip) return false;
+    if (q && !(r.nombre.toLowerCase().includes(q) || (qd.length >= 3 && (r.dni.includes(qd) || r.telefonos.some((t) => t.n.includes(qd)))))) return false;
+    return true;
+  });
+  const per = 50, pages = Math.max(1, Math.ceil(recs.length / per));
+  basePage = Math.min(basePage, pages - 1);
+  const slice = recs.slice(basePage * per, basePage * per + per);
+  m.innerHTML = `${filterBar(false)}
+  <div class="filters" style="margin-top:-6px">
+    <div class="grow"><label class="f" for="bq2">Buscar</label><input type="search" id="bq2" placeholder="Nombre, DNI o teléfono" value="${esc(baseQ)}"></div>
+    <div><label class="f" for="be">Estado</label><select id="be">${[["", "Todos"], ["pendiente", "Sin gestionar"], ["en_curso", "En curso"], ["agendado", "Con rellamado"], ["cerrado", "Cerrado"]].map(([v, l]) => `<option value="${v}" ${baseEstado === v ? "selected" : ""}>${l}</option>`).join("")}</select></div>
+    <div><label class="f" for="bt">Último resultado</label><select id="bt"><option value="">Todos</option>${["Sin gestionar", ...TIPLIST().map((t) => t.label)].map((l) => `<option ${baseTip === l ? "selected" : ""}>${esc(l)}</option>`).join("")}</select></div>
+  </div>
+  <div class="panel"><div class="bd tbl-wrap">
+    <table class="t"><thead><tr><th>Cliente</th><th>DNI</th><th>Teléfono</th><th>Fuente</th><th class="n">Int.</th><th>Último resultado</th><th>Estado</th><th>TC nueva</th></tr></thead><tbody>
+    ${slice.map((r) => `<tr class="click" data-id="${r.id}" tabindex="0"><td><b>${esc(r.nombre)}</b></td><td>${esc(r.dni)}</td><td>${esc(fmtTel(r.telefonos.find((t) => !t.invalido)?.n || r.telefonos[0]?.n || ""))}${r.telefonos.length > 1 ? ` <span class="muted">+${r.telefonos.length - 1}</span>` : ""}</td><td>${esc(r.fuente)}</td><td class="n">${r.intentos}</td><td>${esc(r.ultima ? r.ultima.label + (r.ultima.sub ? " · " + r.ultima.sub : "") : "—")}</td><td>${estadoChip(r)}${r.lock && r.lock.until > Date.now() ? ` <span class="chip a">En uso: ${esc(r.lock.name)}</span>` : ""}</td><td>${r.tcCargada ? `<span class="chip g">${esc(r.tc.marca)}${S.user.role === "supervisor" || S.user.role === "cliente" ? " ···· " + esc(r.tc.last4) : ""}</span>` : ""}</td></tr>`).join("") || `<tr><td colspan="8" class="muted">No hay registros con esos filtros.</td></tr>`}
+    </tbody></table>
+    <div class="pager"><span>${recs.length} registros</span><button class="btn" id="pp" ${basePage === 0 ? "disabled" : ""}>Anterior</button><span>Página ${basePage + 1} de ${pages}</span><button class="btn" id="pn" ${basePage >= pages - 1 ? "disabled" : ""}>Siguiente</button></div>
+  </div></div>`;
+  bindFilters(m, viewBase);
+  let t; $("#bq2").oninput = (e) => { clearTimeout(t); t = setTimeout(() => { baseQ = e.target.value; basePage = 0; viewBase(m); $("#bq2").focus(); $("#bq2").setSelectionRange(baseQ.length, baseQ.length); }, 300); };
+  $("#be").onchange = (e) => { baseEstado = e.target.value; basePage = 0; viewBase(m); };
+  $("#bt").onchange = (e) => { baseTip = e.target.value; basePage = 0; viewBase(m); };
+  $("#pp").onclick = () => { basePage--; viewBase(m); };
+  $("#pn").onclick = () => { basePage++; viewBase(m); };
+  m.querySelectorAll("tr[data-id]").forEach((tr) => { tr.onclick = () => drawer(tr.dataset.id, m); tr.onkeydown = (e) => { if (e.key === "Enter") drawer(tr.dataset.id, m); }; });
+}
+async function viewCobros(m) {
+  if (!S.records) { m.innerHTML = `<p class="muted">Cargando datos…</p>`; try { await loadRecords(); } catch (e) { return; } }
+  const q = cobrosQ.toLowerCase(), qd = q.replace(/\D/g, "");
+  const ahora = Date.now(), diasEnMs = 7 * 24 * 3600e3;
+  let recs = filtRecs().filter((r) => {
+    if (r.estado !== "cerrado") return false;
+    if (r.ultima?.k !== "venta") return false;
+    if (q && !(r.nombre.toLowerCase().includes(q) || (qd.length >= 3 && (r.dni.includes(qd) || r.telefonos.some((t) => t.n.includes(qd)))))) return false;
+    return true;
+  }).map((r) => ({ ...r, diasDesdeVenta: Math.floor((ahora - r.ultimaAt) / diasEnMs) }));
+  const per = 50, pages = Math.max(1, Math.ceil(recs.length / per));
+  cobrosPage = Math.min(cobrosPage, pages - 1);
+  const slice = recs.slice(cobrosPage * per, cobrosPage * per + per);
+  m.innerHTML = `${filterBar(false)}
+  <div class="filters" style="margin-top:-6px">
+    <div class="grow"><label class="f" for="cq">Buscar</label><input type="search" id="cq" placeholder="Nombre, DNI o teléfono" value="${esc(cobrosQ)}"></div>
+  </div>
+  <div class="panel"><div class="bd tbl-wrap">
+    <table class="t"><thead><tr><th>Cliente</th><th>DNI</th><th>Teléfono</th><th>Fecha de venta</th><th>Días</th><th>Estado de cobro</th></tr></thead><tbody>
+    ${slice.map((r) => `<tr><td><b>${esc(r.nombre)}</b></td><td>${esc(r.dni)}</td><td>${esc(fmtTel(r.telefonos.find((t) => !t.invalido)?.n || r.telefonos[0]?.n || ""))}</td><td>${fmtDT(r.ultimaAt)}</td><td><span class="chip ${r.diasDesdeVenta >= 7 ? "g" : "a"}">${r.diasDesdeVenta}</span></td><td><input type="checkbox" class="cobro-cb" data-id="${r.id}" ${r.cobrado ? "checked" : ""} ${r.diasDesdeVenta < 7 ? "disabled" : ""} title="${r.diasDesdeVenta < 7 ? "Se habilita después de 7 días" : ""}"></td></tr>`).join("") || `<tr><td colspan="6" class="muted">No hay registros con esos filtros.</td></tr>`}
+    </tbody></table>
+    <div class="pager"><span>${recs.length} registros</span><button class="btn" id="cp" ${cobrosPage === 0 ? "disabled" : ""}>Anterior</button><span>Página ${cobrosPage + 1} de ${pages}</span><button class="btn" id="cn" ${cobrosPage >= pages - 1 ? "disabled" : ""}>Siguiente</button></div>
+  </div></div>`;
+  let t; $("#cq").oninput = (e) => { clearTimeout(t); t = setTimeout(() => { cobrosQ = e.target.value; cobrosPage = 0; viewCobros(m); $("#cq").focus(); $("#cq").setSelectionRange(cobrosQ.length, cobrosQ.length); }, 300); };
+  $("#cp").onclick = () => { cobrosPage--; viewCobros(m); };
+  $("#cn").onclick = () => { cobrosPage++; viewCobros(m); };
+  m.querySelectorAll(".cobro-cb").forEach((cb) => { 
+    cb.onchange = (e) => run(async () => {
+      await API("marcar-cobrado", { id: e.target.dataset.id, cobrado: e.target.checked });
+      await loadRecords(true);
+      toast(e.target.checked ? "Marcado como cobrado" : "Desmarcado como cobrado");
+      viewCobros(m);
+    }, e.target);
+  });
+}
+function drawer(id, m) {
+  const r = S.records.find((x) => x.id === id); if (!r) return;
+  const isSup = S.user.role === "supervisor";
+  const bg = document.createElement("div"); bg.className = "drawer-bg";
+  const d = document.createElement("aside"); d.className = "drawer"; d.setAttribute("aria-label", "Detalle del registro");
+  d.innerHTML = `
+    <div class="bar"><button class="btn" id="dx">Cerrar</button>
+      ${isSup ? `${r.estado !== "cerrado" ? `<button class="btn" id="dg">Gestionar</button>` : `<button class="btn" id="dr">Reabrir</button>`}
+      ${r.lock && r.lock.until > Date.now() ? `<button class="btn" id="dl">Liberar (${esc(r.lock.name)})</button>` : ""}
+      ${r.tcCargada ? `<button class="btn" id="dtc">Ver tarjeta</button>` : ""}` : ""}
+    </div>
+    <div class="ficha-head"><div class="name">${esc(r.nombre)}</div>
+      <div class="meta"><span>DNI <b>${esc(r.dni)}</b></span><span>Fuente <b>${esc((r.fuentes || [r.fuente]).join(", "))}</b></span><span>Intentos <b>${r.intentos}</b></span></div>
+      <div class="chips">${estadoChip(r)}${r.agenda ? `<span class="chip g">Rellamar ${fmtDT(r.agenda.at)}</span>` : ""}${r.tcCargada ? `<span class="chip g">TC ${esc(r.tc.marca)} ···· ${esc(r.tc.last4)} · ${esc(r.tc.banco)}</span>` : ""}</div>
+      <div id="dtcv" style="margin-top:8px"></div></div>
+    <div class="sec"><h3>Teléfonos</h3>${r.telefonos.map((t) => `<div class="small ${t.invalido ? "muted" : ""}">${esc(fmtTel(t.n))} ${t.invalido ? "(erróneo)" : ""} · ${t.origen === "operador" ? "agregado por " + esc(t.by) : "base"}</div>`).join("")}</div>
+    <div class="sec"><h3>Tarjeta anterior</h3><div class="small">${esc(r.tcAnterior || "—")}</div></div>
+    ${r.notas ? `<div class="sec"><h3>Observaciones previas</h3><div class="notas">${esc(r.notas)}</div></div>` : ""}
+    <div class="sec"><h3>Historial</h3>${r.hist.length ? `<ul class="hist">${[...r.hist].reverse().map((h) => `<li><span class="when">${fmtDT(h.at)}<br>${esc(h.byName)}</span><div><span class="t ${h.grupo}">${esc(h.label)}${h.sub ? " · " + esc(h.sub) : ""}</span>${h.tel ? ` <span class="muted">al ${esc(fmtTel(h.tel))}</span>` : ""}${h.obs ? `<div>${esc(h.obs)}</div>` : ""}</div></li>`).join("")}</ul>` : `<p class="muted small">Sin gestiones.</p>`}</div>`;
+  document.body.append(bg, d);
+  const close = () => { bg.remove(); d.remove(); };
+  bg.onclick = close; $("#dx", d).onclick = close; $("#dx", d).focus();
+  d.onkeydown = (e) => { if (e.key === "Escape") close(); };
+  if ($("#dg", d)) $("#dg", d).onclick = () => { close(); openRec(id, m); };
+  if ($("#dr", d)) $("#dr", d).onclick = (e) => run(async () => { await API("reabrir", { id }); await loadRecords(true); close(); toast("Registro reabierto con el contador sin contacto en cero."); viewBase(m); }, e.target);
+  if ($("#dl", d)) $("#dl", d).onclick = (e) => run(async () => { await API("liberar", { id }); await loadRecords(true); close(); viewBase(m); }, e.target);
+  if ($("#dtc", d)) $("#dtc", d).onclick = (e) => run(async () => {
+    const x = await API("tc-reveal", { id });
+    $("#dtcv", d).innerHTML = `<div class="vault" style="margin:0;padding:14px"><div class="card-no">${esc(x.tc.numero.replace(/(.{4})/g, "$1 ").trim())}</div><div class="small">${esc(x.tc.marca)} · ${esc(x.tc.banco)}${x.tc.vto ? " · vto " + esc(x.tc.vto) : ""} · se oculta en 30 s</div></div>`;
+    setTimeout(() => { if ($("#dtcv", d)) $("#dtcv", d).innerHTML = ""; }, 30000);
+  }, e.target);
+}
+
+/* ═══════════ Exportaciones ═══════════ */
+function exportExcel() {
+  const recs = filtRecs(), hist = histInRange(recs);
+  const wb = XLSX.utils.book_new();
+  const base = recs.map((r) => ({
+    ID: +r.id, DNI: r.dni, Nombre: r.nombre, Fuente: (r.fuentes || [r.fuente]).join(", "),
+    "Teléfono principal": r.telefonos.find((t) => !t.invalido)?.n || "",
+    "Teléfonos agregados": r.telefonos.filter((t) => t.origen === "operador").map((t) => t.n).join(" / "),
+    "TC anterior": r.tcAnterior, Estado: r.estado === "cerrado" ? "Cerrado" : r.intentos ? "En curso" : "Sin gestionar",
+    "Motivo de cierre": r.motivoCierre || "", Intentos: r.intentos, "Sin contacto": r.sinContacto, Contactado: r.contactado ? "Sí" : "No",
+    "Último resultado": r.ultima?.label || "", Producto: r.ultima?.sub || "", "Fecha último": r.ultima ? new Date(r.ultima.at) : "",
+    "Rellamar": r.agenda && r.estado !== "cerrado" ? new Date(r.agenda.at) : "",
+    "TC nueva cargada": r.tcCargada ? `${r.tc.marca} ···· ${r.tc.last4}` : "", "Banco TC nueva": r.tc?.banco || "",
+  }));
+  const ges = hist.map((h) => ({
+    Fecha: new Date(h.at), Operador: h.byName, Quincena: h.q, DNI: h.rec.dni, Nombre: h.rec.nombre, Fuente: h.rec.fuente,
+    Grupo: h.grupo === "efectivo" ? "Efectivo" : "No efectivo", Tipificación: h.label, Producto: h.sub || "", Teléfono: h.tel, Intento: h.intento, Observación: h.obs, Cierre: h.cierre || "",
+  }));
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(base), "Base");
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(ges.length ? ges : [{ Fecha: "Sin gestiones en el período" }]), "Gestiones");
+  XLSX.writeFile(wb, `Recupero_MedicAssist_${new Date().toISOString().slice(0, 10)}.xlsx`, { cellDates: true });
+}
+async function exportTC() {
+  if (!confirm("Vas a descargar un archivo con números de tarjeta completos. Queda registrado en la auditoría. Guardalo en un lugar seguro y borralo cuando lo entregues. ¿Continuar?")) return;
+  const d = await API("ventas-tc");
+  if (!d.items.length) return toast("Todavía no hay tarjetas cargadas.");
+  const rows = d.items.map((x) => ({ DNI: x.dni, Nombre: x.nombre, Fuente: x.fuente, Resultado: x.ultima, Producto: x.producto, Fecha: x.fecha ? new Date(x.fecha) : "", Operador: x.operador, Marca: x.marca, Banco: x.banco, "Número de tarjeta": x.numero, Vencimiento: x.vto || "" }));
+  const ws = XLSX.utils.json_to_sheet(rows);
+  const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, "Tarjetas");
+  XLSX.writeFile(wb, `Tarjetas_MedicAssist_${new Date().toISOString().slice(0, 10)}.xlsx`, { cellDates: true });
+}
+
+/* ═══════════ Carga de base ═══════════ */
+const nrm = (h) => String(h).normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/\s+/g, " ").trim();
+function mapCols(headers) {
+  const m = { dni: null, nombre: null, apellido: null, tel: [], tc: null, reservadas: [], notas: [], otros: [] };
+  for (const h of headers) {
+    const n = nrm(h);
+    if (!m.dni && /^(dni|documento|nro doc|nro\. doc|doc)$/.test(n)) m.dni = h;
+    else if (!m.nombre && /^(nombre|nombre y apellido|nombre completo|cliente|titular)$/.test(n)) m.nombre = h;
+    else if (!m.apellido && /^apellido/.test(n)) m.apellido = h;
+    else if (/tel|cel|movil|whatsapp|contacto/.test(n)) m.tel.push(h);
+    else if (/^(nueva tc|banco|marca|vencimiento|vto|cvv|cod seg)/.test(n)) m.reservadas.push(h);
+    else if (!m.tc && /^(tc|tarjeta|nro tarjeta|numero de tarjeta|tc anterior)$/.test(n)) m.tc = h;
+    else if (/observ|nota|comentario|^__empty/.test(n)) m.notas.push(h);
+    else m.otros.push(h);
+  }
+  return m;
+}
+const cellStr = (v) => typeof v === "number" ? (Number.isInteger(v) ? String(v) : v.toFixed(0)) : String(v ?? "").trim();
+const maskTC = (s) => { const d = String(s).replace(/\D/g, ""); if (d.length < 10) return d ? "••••" : ""; return d.slice(0, 6) + "•".repeat(d.length - 10) + d.slice(-4); };
+
+function viewCarga(m) {
+  m.innerHTML = `
+  <div class="panel" style="max-width:980px">
+    <div class="hd"><h2 style="font-size:17px">Cargar base</h2></div>
+    <div class="bd">
+      <p class="muted" style="margin-top:0">Subí un Excel o CSV. El nombre del archivo queda como fuente de esos registros y las cargas del mismo archivo se acumulan. Si un DNI ya existe, se suman los teléfonos nuevos y se conserva toda su gestión.</p>
+      <label class="drop" id="drop" for="file"><b>Elegí un archivo o arrastralo acá</b><br><span class="small muted">.xlsx, .xls o .csv</span></label>
+      <input type="file" id="file" accept=".xlsx,.xls,.csv" class="hidden">
+      <div id="prev" style="margin-top:16px"></div>
+    </div>
+  </div>
+  <div class="panel" style="max-width:980px;margin-top:18px"><div class="hd"><h3>Fuentes cargadas</h3></div><div class="bd" id="fl"><span class="muted small">Cargando…</span></div></div>`;
+  const handle = async (file) => {
+    const buf = await file.arrayBuffer();
+    const wb = XLSX.read(buf, { type: "array" });
+    const ws = wb.Sheets[wb.SheetNames[0]];
+    const rows = XLSX.utils.sheet_to_json(ws, { defval: "", raw: true });
+    if (!rows.length) return toast("El archivo está vacío.", true);
+    const headers = Object.keys(rows[0]).length ? [...new Set(rows.flatMap((r) => Object.keys(r)))] : [];
+    const map = mapCols(headers);
+    if (!map.dni && !map.nombre) return toast("No encontré columnas de DNI ni de nombre. Revisá los encabezados.", true);
+    const fuente = file.name.replace(/\.[^.]+$/, "");
+    const prepared = rows.map((r) => {
+      const notas = map.notas.map((h) => cellStr(r[h])).filter(Boolean).join(" | ");
+      const data = {}; for (const h of map.otros) { const v = cellStr(r[h]); if (v) data[h] = v; }
+      return {
+        dni: cellStr(r[map.dni]), nombre: [cellStr(r[map.nombre]), cellStr(r[map.apellido])].filter(Boolean).join(" "),
+        telefonos: map.tel.map((h) => cellStr(r[h]).replace(/\D/g, "")).filter((t) => t.length >= 6),
+        tcAnterior: map.tc ? maskTC(cellStr(r[map.tc])) : "", notas, data,
+      };
+    }).filter((r) => r.dni || r.nombre);
+    const conTel = prepared.filter((r) => r.telefonos.length).length;
+    $("#prev").innerHTML = `
+      <h3 style="font-size:15px;margin-bottom:8px">${esc(file.name)} · ${prepared.length} registros · fuente “${esc(fuente)}”</h3>
+      <div class="map-list">
+        <div><b>DNI</b>${esc(map.dni || "—")}</div>
+        <div><b>Nombre</b>${esc([map.nombre, map.apellido].filter(Boolean).join(" + ") || "—")}</div>
+        <div><b>Teléfonos</b>${esc(map.tel.join(", ") || "—")}</div>
+        <div><b>Tarjeta anterior (se guarda enmascarada)</b>${esc(map.tc || "—")}</div>
+        <div><b>Observaciones previas</b>${esc([...new Set(map.notas.map((h) => h.startsWith("__EMPTY") ? "columnas sin título" : h))].join(", ") || "—")}</div>
+        <div><b>Se ignoran (datos de tarjeta nueva)</b>${esc(map.reservadas.join(", ") || "—")}</div>
+        <div><b>Otros datos para la ficha</b>${esc(map.otros.join(", ") || "—")}</div>
+      </div>
+      ${conTel < prepared.length ? `<p class="warn" style="margin-top:10px">${prepared.length - conTel} registros sin teléfono: no salen en la cola hasta que se les agregue uno.</p>` : ""}
+      <p class="small muted">Ejemplo: ${esc(prepared[0].nombre)} · DNI ${esc(prepared[0].dni)} · TC ${esc(prepared[0].tcAnterior || "—")}</p>
+      <button class="btn primary" id="bup">Cargar ${prepared.length} registros</button>`;
+    $("#bup").onclick = (e) => run(async () => {
+      let tot = { nuevos: 0, actualizados: 0, omitidos: 0 };
+      for (let i = 0; i < prepared.length; i += 400) {
+        e.target.textContent = `Cargando ${Math.min(i + 400, prepared.length)} de ${prepared.length}…`;
+        const d = await API("upload", { fuente, rows: prepared.slice(i, i + 400) });
+        for (const k in tot) tot[k] += d[k];
+      }
+      $("#prev").innerHTML = `<p><b>Carga terminada.</b> ${tot.nuevos} nuevos, ${tot.actualizados} ya existían (se sumaron teléfonos y datos), ${tot.omitidos} filas vacías.</p>`;
+      S.records = null; await refreshState(); listFuentes();
+    }, e.target);
+  };
+  const drop = $("#drop");
+  $("#file").onchange = (e) => e.target.files[0] && handle(e.target.files[0]);
+  drop.ondragover = (e) => { e.preventDefault(); drop.classList.add("over"); };
+  drop.ondragleave = () => drop.classList.remove("over");
+  drop.ondrop = (e) => { e.preventDefault(); drop.classList.remove("over"); e.dataTransfer.files[0] && handle(e.dataTransfer.files[0]); };
+  const listFuentes = async () => {
+    const recs = await loadRecords(true).catch(() => []);
+    const fu = {}; for (const r of recs) for (const f of r.fuentes || [r.fuente]) { (fu[f] ||= { n: 0, a: 0 }); fu[f].n++; if (r.estado !== "cerrado") fu[f].a++; }
+    $("#fl").innerHTML = Object.keys(fu).length ? `<table class="t"><thead><tr><th>Fuente</th><th class="n">Registros</th><th class="n">Abiertos</th></tr></thead><tbody>${Object.entries(fu).map(([k, o]) => `<tr><td>${esc(k)}</td><td class="n">${o.n}</td><td class="n">${o.a}</td></tr>`).join("")}</tbody></table>` : `<p class="muted small">Todavía no hay bases cargadas.</p>`;
+  };
+  listFuentes();
+}
+
+/* ═══════════ Usuarios y configuración ═══════════ */
+async function viewConfig(m) {
+  const c = S.st.config;
+  m.innerHTML = `
+  <div class="grid2">
+    <div class="panel"><div class="hd"><h3>Reglas de la campaña</h3></div><div class="bd" style="display:grid;gap:12px">
+      <div><label class="f" for="cc">Nombre de la campaña</label><input type="text" id="cc" value="${esc(c.campaign)}"></div>
+      <div class="grid2" style="margin:0;gap:12px">
+        <div><label class="f" for="cm">Tope de intentos sin contacto</label><input type="number" id="cm" min="1" max="20" value="${c.maxIntentos}"></div>
+        <div><label class="f" for="ce">Minutos mínimos entre intentos</label><input type="number" id="ce" min="0" max="1440" value="${c.minEntreIntentos}"></div>
+        <div><label class="f" for="cl">Minutos de reserva de un registro</label><input type="number" id="cl" min="5" max="120" value="${c.lockMin}"></div>
+        <div><label class="f" for="cd">Llamados por día a un mismo registro</label><input type="number" id="cd" min="1" max="10" value="${c.maxDiarios}"></div>
+        <div><label class="f" for="chi">Horario de gestión desde (hs)</label><input type="number" id="chi" min="0" max="23" value="${c.horaInicio}"></div>
+        <div><label class="f" for="chf">Hasta (hs)</label><input type="number" id="chf" min="1" max="24" value="${c.horaFin}"></div>
+      </div>
+      <label style="display:flex;gap:8px;align-items:center"><input type="checkbox" id="cq" ${c.quincenaEstricta ? "checked" : ""}> Cada operador gestiona sólo en su quincena (hoy es la ${S.st.quincena === 1 ? "1ª" : "2ª"})</label>
+      <button class="btn primary" id="bcfg" style="justify-self:start">Guardar reglas</button>
+    </div></div>
+    <div class="panel"><div class="hd"><h3>Usuarios</h3></div><div class="bd" id="ul">Cargando…</div></div>
+  </div>
+  <div class="grid2">
+    <div class="panel"><div class="hd"><h3>Auditoría</h3><span class="small muted">cargas, tarjetas vistas y exportadas, cambios</span></div><div class="bd tbl-wrap" id="au" style="max-height:420px;overflow:auto">Cargando…</div></div>
+    <div class="panel"><div class="hd"><h3 style="color:var(--red)">Borrar base</h3></div><div class="bd">
+      <p class="small muted" style="margin-top:0">Elimina todos los registros, gestiones y tarjetas cargadas. No se puede deshacer. Exportá antes.</p>
+      <div style="display:flex;gap:8px"><input type="text" id="rz" placeholder="Escribí BORRAR"><button class="btn danger" id="brz">Borrar todo</button></div>
+    </div></div>
+  </div>`;
+  $("#bcfg").onclick = (e) => run(async () => {
+    await API("config", { campaign: $("#cc").value, maxIntentos: $("#cm").value, minEntreIntentos: $("#ce").value, lockMin: $("#cl").value, horaInicio: $("#chi").value, horaFin: $("#chf").value, maxDiarios: $("#cd").value, quincenaEstricta: $("#cq").checked });
+    await refreshState(); toast("Reglas guardadas."); render();
+  }, e.target);
+  $("#brz").onclick = (e) => run(async () => { await API("reset", { confirmar: $("#rz").value }); S.records = null; await refreshState(); toast("Base borrada."); render(); }, e.target);
+  const users = (await API("users")).users;
+  const row = (u) => `<tr data-u="${esc(u.u)}"><td><input type="text" value="${esc(u.u)}" ${u.u ? "readonly" : ""} class="uu" placeholder="usuario"></td>
+    <td><input type="text" value="${esc(u.name || "")}" class="un" placeholder="Nombre visible"></td>
+    <td><select class="ur">${["operador", "supervisor", "cliente"].map((r) => `<option ${u.role === r ? "selected" : ""}>${r}</option>`).join("")}</select></td>
+    <td><select class="uq"><option value="">—</option><option value="1" ${u.quincena === 1 ? "selected" : ""}>1ª (1–15)</option><option value="2" ${u.quincena === 2 ? "selected" : ""}>2ª (16–fin)</option></select></td>
+    <td><input type="checkbox" class="ua" ${u.activo !== false ? "checked" : ""} aria-label="Activo"></td>
+    <td><input type="password" class="up" placeholder="${u.u ? "Sin cambios" : "Contraseña"}" autocomplete="new-password"></td>
+    <td><button class="btn us">Guardar</button></td></tr>`;
+  $("#ul").innerHTML = `<div class="tbl-wrap"><table class="t"><thead><tr><th>Usuario</th><th>Nombre</th><th>Rol</th><th>Quincena</th><th>Activo</th><th>Nueva contraseña</th><th></th></tr></thead><tbody id="ub">${users.map(row).join("")}${row({ u: "", role: "operador", activo: true })}</tbody></table></div>`;
+  $("#ub").querySelectorAll("tr").forEach((tr) => $(".us", tr).onclick = (e) => run(async () => {
+    await API("users", { u: $(".uu", tr).value, name: $(".un", tr).value, role: $(".ur", tr).value, quincena: $(".uq", tr).value, activo: $(".ua", tr).checked, p: $(".up", tr).value });
+    toast("Usuario guardado."); viewConfig(m);
+  }, e.target));
+  const au = (await API("audit")).items;
+  $("#au").innerHTML = au.length ? `<table class="t"><thead><tr><th>Fecha</th><th>Usuario</th><th>Acción</th><th>Detalle</th></tr></thead><tbody>${au.map((a) => `<tr><td>${fmtDT(a.at)}</td><td>${esc(a.u)}</td><td>${esc(a.accion)}</td><td>${esc(a.detalle)}</td></tr>`).join("")}</tbody></table>` : `<p class="muted small">Sin eventos todavía.</p>`;
+}
+
+/* Liberar el registro al cerrar la pestaña */
+window.addEventListener("pagehide", () => {
+  if (S.rec && S.token) fetch("/api/liberar", { method: "POST", keepalive: true, headers: { "content-type": "application/json", authorization: "Bearer " + S.token }, body: JSON.stringify({ id: S.rec.id }) });
+});
+render();
+</script>
+</body>
+</html>

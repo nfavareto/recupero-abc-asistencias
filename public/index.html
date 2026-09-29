@@ -226,7 +226,7 @@ async function run(fn, btn) {
   try { return await fn(); } catch (e) { toast(e.message, true); } finally { if (btn) btn.disabled = false; }
 }
 const TIPLIST = () => [...S.st.tips.no_efectivo.items.map((i) => ({ ...i, grupo: "no_efectivo" })), ...S.st.tips.efectivo.items.map((i) => ({ ...i, grupo: "efectivo" }))];
-const estadoChip = (r) => r.estado === "cerrado" ? `<span class="chip">Cerrado${r.motivoCierre ? ": " + esc(r.motivoCierre) : ""}</span>`
+const estadoChip = (r) => recNoGest(r) ? `<span class="chip" style="text-decoration:line-through" title="Todos sus productos pendientes tienen un código de error que no se gestiona">No gestionable</span>` : r.estado === "cerrado" ? `<span class="chip">Cerrado${r.motivoCierre ? ": " + esc(r.motivoCierre) : ""}</span>`
   : r.intentos ? `<span class="chip a">En curso</span>` : `<span class="chip">Sin gestionar</span>`;
 
 /* ═══════════ Render principal ═══════════ */
@@ -365,13 +365,17 @@ function renderWork(w) {
         </div>
       </div>
       <div class="sec">
+        <h3>Productos a recuperar (${prodsOf(r).filter(prodGest).length} para gestionar de ${prodsOf(r).length})</h3>
+        <div class="tbl-wrap">${prodTable(r)}</div>
+      </div>
+      <div class="sec">
         <h3>Tarjeta anterior</h3>
         <div class="kv"><dt>Número</dt><dd><b>${esc(r.tcAnterior || "No informada")}</b></dd></div>
       </div>
       ${dataRows.length ? `<div class="sec"><h3>Datos de la base</h3><dl class="kv">${dataRows.map(([k, v]) => `<dt>${esc(k)}</dt><dd>${esc(v)}</dd>`).join("")}</dl></div>` : ""}
       ${r.notas ? `<div class="sec"><h3>Observaciones previas</h3><div class="notas">${esc(r.notas)}</div></div>` : ""}
       <div class="sec"><h3>Historial de gestiones</h3>
-        ${r.hist.length ? `<ul class="hist">${[...r.hist].reverse().map((h) => `<li><span class="when">${fmtDT(h.at)}<br>${esc(h.byName)}</span><div><span class="t ${h.grupo}">${esc(h.label)}${h.sub ? " · " + esc(h.sub) : ""}</span>${h.tel ? ` <span class="muted">al ${esc(fmtTel(h.tel))}</span>` : ""}${h.cierre ? ` <span class="chip">Cierra: ${esc(h.cierre)}</span>` : ""}${h.obs ? `<div>${esc(h.obs)}</div>` : ""}</div></li>`).join("")}</ul>` : `<p class="muted small">Todavía no tiene gestiones.</p>`}
+        ${r.hist.length ? `<ul class="hist">${[...r.hist].reverse().map((h) => `<li><span class="when">${fmtDT(h.at)}<br>${esc(h.byName)}</span><div><span class="t ${h.grupo}">${esc(h.label)}${h.sub ? " · " + esc(h.sub) : ""}</span>${h.tel ? ` <span class="muted">al ${esc(fmtTel(h.tel))}</span>` : ""}${h.productos ? ` <span class="chip g">Recupera: ${esc(h.productos.join(", "))}</span>` : ""}${h.cierre ? ` <span class="chip">Cierra: ${esc(h.cierre)}</span>` : ""}${h.obs ? `<div>${esc(h.obs)}</div>` : ""}</div></li>`).join("")}</ul>` : `<p class="muted small">Todavía no tiene gestiones.</p>`}
       </div>
     </section>
 
@@ -402,7 +406,7 @@ function renderWork(w) {
     const d = await API("telefono", { id: r.id, accion: "agregar", n: $("#ntel").value, nota: $("#ntelnota").value });
     S.rec = d.record; F.tel = d.record.telefonos[d.record.telefonos.length - 1].n; toast("Teléfono guardado en el registro."); renderWork(w);
   }, e.target);
-  w.querySelectorAll(".tip-btn").forEach((b) => b.onclick = () => { F.grupo = b.dataset.g; F.k = b.dataset.k; if (F.k !== "venta") F.sub = null; renderWork(w); });
+  w.querySelectorAll(".tip-btn").forEach((b) => b.onclick = () => { F.grupo = b.dataset.g; F.k = b.dataset.k; if (F.k !== "venta") { F.sub = null; F.prods = null; } else if (!F.prods) F.prods = prodsOf(S.rec).filter(prodGest).map((p) => p.nombre); renderWork(w); });
   renderTipExtra($("#tipx"), w);
   renderVault($("#vault"), w);
 }
@@ -419,6 +423,10 @@ function renderTipExtra(x, w) {
   const minDT = new Date(Date.now() - new Date().getTimezoneOffset() * 60e3).toISOString().slice(0, 16);
   x.innerHTML = `
     ${def?.subs ? `<div class="subs" role="group" aria-label="Producto vendido">${def.subs.map((s) => `<button class="sub-btn ${F.sub === s ? "on" : ""}" data-s="${esc(s)}">${esc(s)}</button>`).join("")}</div>` : ""}
+    ${def?.venta && prodsOf(r).some(prodGest) ? `<div class="subs" role="group" aria-label="Productos recuperados" style="flex-direction:column;align-items:flex-start;gap:6px">
+      <div class="small"><b>¿Qué productos recupera con la tarjeta nueva?</b></div>
+      ${prodsOf(r).filter(prodGest).map((p) => `<label style="display:flex;gap:8px;align-items:center;cursor:pointer"><input type="checkbox" class="prod-cb" value="${esc(p.nombre)}" ${(F.prods || []).includes(p.nombre) ? "checked" : ""}> <b>${esc(p.nombre)}</b> <span class="small muted">${esc([p.codigo, p.motivo].filter(Boolean).join(" · "))}</span></label>`).join("")}
+    </div>` : ""}
     <div class="tip-extra">
       ${def?.venta && !r.tcCargada ? `<div class="warn">Para registrar la venta, primero guardá la tarjeta nueva en el bloque de abajo.</div>` : ""}
       ${def?.franja && def.franja !== "TM" ? `<div class="warn">${def.label} queda fuera del horario de la campaña (${S.st.config.horaInicio} a ${S.st.config.horaFin} hs). Se registra como no efectivo y el registro sigue en la cola normal.</div>` : ""}
@@ -432,13 +440,15 @@ function renderTipExtra(x, w) {
       <button class="btn primary" id="bsave" ${!def ? "disabled" : ""}>Guardar gestión${def ? ": " + esc(def.label) : ""}</button>
     </div>`;
   x.querySelectorAll(".sub-btn").forEach((b) => b.onclick = () => { F.sub = b.dataset.s; renderTipExtra(x, w); });
+  x.querySelectorAll(".prod-cb").forEach((cb) => cb.onchange = () => { F.prods = [...x.querySelectorAll(".prod-cb:checked")].map((c) => c.value); });
   const obs = $("#obs"); obs.oninput = () => F.obs = obs.value;
   if ($("#agat")) $("#agat").onchange = (e) => F.agendaAt = e.target.value;
   $("#bsave").onclick = (e) => run(async () => {
     if (def.subs && !F.sub) throw new Error("Elegí el producto vendido.");
+    if (def.venta && prodsOf(r).some(prodGest) && !(F.prods || []).length) throw new Error("Marcá qué productos recupera el cliente.");
     const agendaAt = F.agendaAt ? new Date(F.agendaAt).toISOString() : null;
     if (agendaAt) { const hh = new Date(F.agendaAt).getHours() + new Date(F.agendaAt).getMinutes() / 60; if (hh < S.st.config.horaInicio || hh >= S.st.config.horaFin) throw new Error(`El rellamado tiene que quedar entre las ${S.st.config.horaInicio} y las ${S.st.config.horaFin} hs.`); }
-    const d = await API("tipificar", { id: r.id, grupo: F.grupo, k: F.k, sub: F.sub, obs: F.obs || "", tel: F.tel, agendaAt });
+    const d = await API("tipificar", { id: r.id, grupo: F.grupo, k: F.k, sub: F.sub, obs: F.obs || "", tel: F.tel, agendaAt, productos: def.venta ? F.prods || [] : undefined });
     const rr = d.record;
     toast(`Guardado: ${def.label}${rr.estado === "cerrado" ? " · registro cerrado" : ""}`);
     S.rec = null; S.form = {};
@@ -583,8 +593,8 @@ async function viewReporte(m) {
 
   // Pipeline: último resultado de cada registro
   const pipe = {};
-  for (const r of recs) { const k = r.ultima ? r.ultima.label : "Sin gestionar"; pipe[k] = (pipe[k] || 0) + 1; }
-  const tipOrder = ["Sin gestionar", ...TIPLIST().map((t) => t.label)];
+  for (const r of recs) { const k = recNoGest(r) && !r.ultima ? "No gestionable" : r.ultima ? r.ultima.label : "Sin gestionar"; pipe[k] = (pipe[k] || 0) + 1; }
+  const tipOrder = ["Sin gestionar", "No gestionable", ...TIPLIST().map((t) => t.label)];
   const tipGroup = Object.fromEntries(TIPLIST().map((t) => [t.label, t.grupo]));
   const pipeRows = tipOrder.filter((k) => pipe[k]).map((k) => [k, pipe[k], tipGroup[k]]);
   // Tipificaciones del período
@@ -594,7 +604,7 @@ async function viewReporte(m) {
   const ops = {};
   for (const h of hist) { const o = (ops[h.byName] ||= { g: 0, ef: 0, v: 0, q: new Set() }); o.g++; if (h.grupo === "efectivo") o.ef++; if (h.k === "venta") o.v++; if (h.q) o.q.add(h.q); }
   // Ventas por producto
-  const vp = {}; for (const h of hV) vp[h.sub || "Sin detalle"] = (vp[h.sub || "Sin detalle"] || 0) + 1;
+  const vp = {}; for (const h of hV) for (const k of (h.productos?.length ? h.productos : [h.sub || "Sin detalle"])) vp[k] = (vp[k] || 0) + 1;
   // Contactabilidad por franja
   const c0 = S.st.config.horaInicio, c1 = S.st.config.horaFin, fr = {};
   for (let x = c0; x < c1; x++) fr[`${x} a ${x + 1} hs`] = [0, 0];
@@ -624,7 +634,7 @@ async function viewReporte(m) {
     <div class="panel"><div class="hd"><h3>Por operador</h3></div><div class="bd tbl-wrap"><table class="t"><thead><tr><th>Operador</th><th>Quincena</th><th class="n">Gestiones</th><th class="n">Efectivas</th><th class="n">% contacto</th><th class="n">Ventas</th><th class="n">Conv.</th></tr></thead><tbody>
       ${Object.entries(ops).map(([n, o]) => `<tr><td><b>${esc(n)}</b></td><td>${[...o.q].sort().map((q) => q === 1 ? "1ª" : "2ª").join(", ")}</td><td class="n">${o.g}</td><td class="n">${o.ef}</td><td class="n">${pct(o.ef, o.g)}</td><td class="n">${o.v}</td><td class="n">${pct(o.v, o.ef)}</td></tr>`).join("") || `<tr><td colspan="7" class="muted">Sin gestiones en el período.</td></tr>`}
     </tbody></table></div></div>
-    <div class="panel"><div class="hd"><h3>Ventas por producto</h3></div><div class="bd">${bars(Object.entries(vp).sort((a, b) => b[1] - a[1]), "efectivo")}</div></div>
+    <div class="panel"><div class="hd"><h3>Productos recuperados</h3></div><div class="bd">${bars(Object.entries(vp).sort((a, b) => b[1] - a[1]), "efectivo")}</div></div>
   </div>
   <div class="grid2">
     <div class="panel"><div class="hd"><h3>Contactabilidad por hora</h3></div><div class="bd tbl-wrap"><table class="t"><thead><tr><th>Hora</th><th class="n">Gestiones</th><th class="n">Efectivas</th><th class="n">% contacto</th></tr></thead><tbody>
@@ -644,7 +654,7 @@ async function viewBase(m) {
   if (!S.records) { m.innerHTML = `<p class="muted">Cargando datos…</p>`; try { await loadRecords(); } catch (e) { return; } }
   const q = baseQ.toLowerCase(), qd = q.replace(/\D/g, "");
   let recs = filtRecs().filter((r) => {
-    if (baseEstado) { const e = r.estado === "cerrado" ? "cerrado" : r.intentos ? "en_curso" : "pendiente"; if (baseEstado === "agendado" ? !(r.agenda && r.estado !== "cerrado") : e !== baseEstado) return false; }
+    if (baseEstado) { const e = recNoGest(r) ? "nogest" : r.estado === "cerrado" ? "cerrado" : r.intentos ? "en_curso" : "pendiente"; if (baseEstado === "agendado" ? !(r.agenda && r.estado !== "cerrado") : e !== baseEstado) return false; }
     if (baseTip && (r.ultima?.label || "Sin gestionar") !== baseTip) return false;
     if (q && !(r.nombre.toLowerCase().includes(q) || (qd.length >= 3 && (r.dni.includes(qd) || r.telefonos.some((t) => t.n.includes(qd)))))) return false;
     return true;
@@ -655,12 +665,12 @@ async function viewBase(m) {
   m.innerHTML = `${filterBar(false)}
   <div class="filters" style="margin-top:-6px">
     <div class="grow"><label class="f" for="bq2">Buscar</label><input type="search" id="bq2" placeholder="Nombre, DNI o teléfono" value="${esc(baseQ)}"></div>
-    <div><label class="f" for="be">Estado</label><select id="be">${[["", "Todos"], ["pendiente", "Sin gestionar"], ["en_curso", "En curso"], ["agendado", "Con rellamado"], ["cerrado", "Cerrado"]].map(([v, l]) => `<option value="${v}" ${baseEstado === v ? "selected" : ""}>${l}</option>`).join("")}</select></div>
+    <div><label class="f" for="be">Estado</label><select id="be">${[["", "Todos"], ["pendiente", "Sin gestionar"], ["en_curso", "En curso"], ["agendado", "Con rellamado"], ["cerrado", "Cerrado"], ["nogest", "No gestionable"]].map(([v, l]) => `<option value="${v}" ${baseEstado === v ? "selected" : ""}>${l}</option>`).join("")}</select></div>
     <div><label class="f" for="bt">Último resultado</label><select id="bt"><option value="">Todos</option>${["Sin gestionar", ...TIPLIST().map((t) => t.label)].map((l) => `<option ${baseTip === l ? "selected" : ""}>${esc(l)}</option>`).join("")}</select></div>
   </div>
   <div class="panel"><div class="bd tbl-wrap">
-    <table class="t"><thead><tr><th>Cliente</th><th>DNI</th><th>Teléfono</th><th>Fuente</th><th class="n">Int.</th><th>Último resultado</th><th>Estado</th><th>TC nueva</th></tr></thead><tbody>
-    ${slice.map((r) => `<tr class="click" data-id="${r.id}" tabindex="0"><td><b>${esc(r.nombre)}</b></td><td>${esc(r.dni)}</td><td>${esc(fmtTel(r.telefonos.find((t) => !t.invalido)?.n || r.telefonos[0]?.n || ""))}${r.telefonos.length > 1 ? ` <span class="muted">+${r.telefonos.length - 1}</span>` : ""}</td><td>${esc(r.fuente)}</td><td class="n">${r.intentos}</td><td>${esc(r.ultima ? r.ultima.label + (r.ultima.sub ? " · " + r.ultima.sub : "") : "—")}</td><td>${estadoChip(r)}${r.lock && r.lock.until > Date.now() ? ` <span class="chip a">En uso: ${esc(r.lock.name)}</span>` : ""}</td><td>${r.tcCargada ? `<span class="chip g">${esc(r.tc.marca)}${["supervisor", "admin", "cliente"].includes(S.user.role) ? " ···· " + esc(r.tc.last4) : ""}</span>` : ""}</td></tr>`).join("") || `<tr><td colspan="8" class="muted">No hay registros con esos filtros.</td></tr>`}
+    <table class="t"><thead><tr><th>Cliente</th><th>DNI</th><th>Productos</th><th>Teléfono</th><th>Fuente</th><th class="n">Int.</th><th>Último resultado</th><th>Estado</th><th>TC nueva</th></tr></thead><tbody>
+    ${slice.map((r) => `<tr class="click" data-id="${r.id}" tabindex="0"><td><b>${esc(r.nombre)}</b></td><td>${esc(r.dni)}</td><td>${prodChips(r, true) || "—"}</td><td>${esc(fmtTel(r.telefonos.find((t) => !t.invalido)?.n || r.telefonos[0]?.n || ""))}${r.telefonos.length > 1 ? ` <span class="muted">+${r.telefonos.length - 1}</span>` : ""}</td><td>${esc(r.fuente)}</td><td class="n">${r.intentos}</td><td>${esc(r.ultima ? r.ultima.label + (r.ultima.sub ? " · " + r.ultima.sub : "") : "—")}</td><td>${estadoChip(r)}${r.lock && r.lock.until > Date.now() ? ` <span class="chip a">En uso: ${esc(r.lock.name)}</span>` : ""}</td><td>${r.tcCargada ? `<span class="chip g">${esc(r.tc.marca)}${["supervisor", "admin", "cliente"].includes(S.user.role) ? " ···· " + esc(r.tc.last4) : ""}</span>` : ""}</td></tr>`).join("") || `<tr><td colspan="9" class="muted">No hay registros con esos filtros.</td></tr>`}
     </tbody></table>
     <div class="pager"><span>${recs.length} registros</span><button class="btn" id="pp" ${basePage === 0 ? "disabled" : ""}>Anterior</button><span>Página ${basePage + 1} de ${pages}</span><button class="btn" id="pn" ${basePage >= pages - 1 ? "disabled" : ""}>Siguiente</button></div>
   </div></div>`;
@@ -677,11 +687,11 @@ async function viewCobros(m) {
   const q = cobrosQ.toLowerCase(), qd = q.replace(/\D/g, "");
   const ahora = Date.now(), diasEnMs = 7 * 24 * 3600e3;
   let recs = filtRecs().filter((r) => {
-    if (r.estado !== "cerrado") return false;
-    if (r.ultima?.k !== "venta") return false;
+    // Toda persona con una venta registrada, aunque después haya vuelto a la cola por un producto nuevo
+    if (!r.ventaAt && !(r.estado === "cerrado" && r.ultima?.k === "venta")) return false;
     if (q && !(r.nombre.toLowerCase().includes(q) || (qd.length >= 3 && (r.dni.includes(qd) || r.telefonos.some((t) => t.n.includes(qd)))))) return false;
     return true;
-  }).map((r) => ({ ...r, diasDesdeVenta: Math.floor((ahora - r.ultimaAt) / diasEnMs) }));
+  }).map((r) => ({ ...r, fechaVenta: r.ventaAt || r.ultimaAt, diasDesdeVenta: Math.floor((ahora - (r.ventaAt || r.ultimaAt)) / (24 * 3600e3)) }));
   const per = 50, pages = Math.max(1, Math.ceil(recs.length / per));
   cobrosPage = Math.min(cobrosPage, pages - 1);
   const slice = recs.slice(cobrosPage * per, cobrosPage * per + per);
@@ -690,8 +700,8 @@ async function viewCobros(m) {
     <div class="grow"><label class="f" for="cq">Buscar</label><input type="search" id="cq" placeholder="Nombre, DNI o teléfono" value="${esc(cobrosQ)}"></div>
   </div>
   <div class="panel"><div class="bd tbl-wrap">
-    <table class="t"><thead><tr><th>Cliente</th><th>DNI</th><th>Teléfono</th><th>Fecha de venta</th><th>Días</th><th>Estado de cobro</th></tr></thead><tbody>
-    ${slice.map((r) => `<tr><td><b>${esc(r.nombre)}</b></td><td>${esc(r.dni)}</td><td>${esc(fmtTel(r.telefonos.find((t) => !t.invalido)?.n || r.telefonos[0]?.n || ""))}</td><td>${fmtDT(r.ultimaAt)}</td><td><span class="chip ${r.diasDesdeVenta >= 7 ? "g" : "a"}">${r.diasDesdeVenta}</span></td><td><input type="checkbox" class="cobro-cb" data-id="${r.id}" ${r.cobrado ? "checked" : ""} ${r.diasDesdeVenta < 7 ? "disabled" : ""} title="${r.diasDesdeVenta < 7 ? "Se habilita después de 7 días" : ""}"></td></tr>`).join("") || `<tr><td colspan="6" class="muted">No hay registros con esos filtros.</td></tr>`}
+    <table class="t"><thead><tr><th>Cliente</th><th>DNI</th><th>Productos recuperados</th><th>Teléfono</th><th>Fecha de venta</th><th>Días</th><th>Estado de cobro</th></tr></thead><tbody>
+    ${slice.map((r) => `<tr><td><b>${esc(r.nombre)}</b></td><td>${esc(r.dni)}</td><td>${esc(prodsOf(r).filter((p) => p.estado === "recuperado").map((p) => p.nombre).join(", ") || "—")}</td><td>${esc(fmtTel(r.telefonos.find((t) => !t.invalido)?.n || r.telefonos[0]?.n || ""))}</td><td>${fmtDT(r.fechaVenta)}</td><td><span class="chip ${r.diasDesdeVenta >= 7 ? "g" : "a"}">${r.diasDesdeVenta}</span></td><td><input type="checkbox" class="cobro-cb" data-id="${r.id}" ${r.cobrado ? "checked" : ""} ${r.diasDesdeVenta < 7 ? "disabled" : ""} title="${r.diasDesdeVenta < 7 ? "Se habilita después de 7 días" : ""}"></td></tr>`).join("") || `<tr><td colspan="7" class="muted">No hay registros con esos filtros.</td></tr>`}
     </tbody></table>
     <div class="pager"><span>${recs.length} registros</span><button class="btn" id="cp" ${cobrosPage === 0 ? "disabled" : ""}>Anterior</button><span>Página ${cobrosPage + 1} de ${pages}</span><button class="btn" id="cn" ${cobrosPage >= pages - 1 ? "disabled" : ""}>Siguiente</button></div>
   </div></div>`;
@@ -723,6 +733,7 @@ function drawer(id, m) {
       <div class="chips">${estadoChip(r)}${r.agenda ? `<span class="chip g">Rellamar ${fmtDT(r.agenda.at)}</span>` : ""}${r.tcCargada ? `<span class="chip g">TC ${esc(r.tc.marca)} ···· ${esc(r.tc.last4)} · ${esc(r.tc.banco)}</span>` : ""}</div>
       <div id="dtcv" style="margin-top:8px"></div></div>
     <div class="sec"><h3>Teléfonos</h3>${r.telefonos.map((t) => `<div class="small ${t.invalido ? "muted" : ""}">${esc(fmtTel(t.n))} ${t.invalido ? "(erróneo)" : ""} · ${t.origen === "operador" ? "agregado por " + esc(t.by) : "base"}</div>`).join("")}</div>
+    <div class="sec"><h3>Productos</h3><div class="tbl-wrap">${prodTable(r)}</div></div>
     <div class="sec"><h3>Tarjeta anterior</h3><div class="small">${esc(r.tcAnterior || "—")}</div></div>
     ${r.notas ? `<div class="sec"><h3>Observaciones previas</h3><div class="notas">${esc(r.notas)}</div></div>` : ""}
     <div class="sec"><h3>Historial</h3>${r.hist.length ? `<ul class="hist">${[...r.hist].reverse().map((h) => `<li><span class="when">${fmtDT(h.at)}<br>${esc(h.byName)}</span><div><span class="t ${h.grupo}">${esc(h.label)}${h.sub ? " · " + esc(h.sub) : ""}</span>${h.tel ? ` <span class="muted">al ${esc(fmtTel(h.tel))}</span>` : ""}${h.obs ? `<div>${esc(h.obs)}</div>` : ""}</div></li>`).join("")}</ul>` : `<p class="muted small">Sin gestiones.</p>`}</div>`;
@@ -748,39 +759,69 @@ function exportExcel() {
     ID: +r.id, DNI: r.dni, Nombre: r.nombre, Fuente: (r.fuentes || [r.fuente]).join(", "),
     "Teléfono principal": r.telefonos.find((t) => !t.invalido)?.n || "",
     "Teléfonos agregados": r.telefonos.filter((t) => t.origen === "operador").map((t) => t.n).join(" / "),
-    "TC anterior": r.tcAnterior, Estado: r.estado === "cerrado" ? "Cerrado" : r.intentos ? "En curso" : "Sin gestionar",
+    Productos: prodsOf(r).map((p) => p.nombre).join(", "),
+    "Productos recuperados": prodsOf(r).filter((p) => p.estado === "recuperado").map((p) => p.nombre).join(", "),
+    "Productos pendientes": prodsOf(r).filter(prodGest).map((p) => p.nombre).join(", "),
+    "Productos no gestionables": prodsOf(r).filter(prodNoGest).map((p) => p.nombre).join(", "),
+    "Códigos de error": prodsOf(r).map((p) => `${p.nombre}: ${p.codigo || "—"} ${p.motivo || ""}`.trim()).join(" | "),
+    "TC anterior": r.tcAnterior, Estado: recNoGest(r) ? "No gestionable" : r.estado === "cerrado" ? "Cerrado" : r.intentos ? "En curso" : "Sin gestionar",
     "Motivo de cierre": r.motivoCierre || "", Intentos: r.intentos, "Sin contacto": r.sinContacto, Contactado: r.contactado ? "Sí" : "No",
     "Último resultado": r.ultima?.label || "", Producto: r.ultima?.sub || "", "Fecha último": r.ultima ? new Date(r.ultima.at) : "",
     "Rellamar": r.agenda && r.estado !== "cerrado" ? new Date(r.agenda.at) : "",
     "TC nueva cargada": r.tcCargada ? `${r.tc.marca} ···· ${r.tc.last4}` : "", "Banco TC nueva": r.tc?.banco || "",
+    "Fecha de venta": r.ventaAt ? new Date(r.ventaAt) : r.ultima?.k === "venta" ? new Date(r.ultima.at) : "",
+    Cobrado: r.ventaAt || r.ultima?.k === "venta" ? (r.cobrado ? "Sí" : "No") : "",
+    "Observaciones previas": r.notas || "",
+    ...r.data,
   }));
+  const prods = recs.flatMap((r) => prodsOf(r).map((p) => ({
+    DNI: r.dni, Nombre: r.nombre, Producto: p.nombre, "Código de error": p.codigo, Motivo: p.motivo, "TC anterior": p.tcAnterior || r.tcAnterior,
+    Estado: prodEstado(p, r),
+    "Fecha recupero": p.at ? new Date(p.at) : "", Operador: p.by || "",
+    "Estado del cliente": r.estado === "cerrado" ? "Cerrado" : r.intentos ? "En curso" : "Sin gestionar", "Último resultado": r.ultima?.label || "",
+    Cobrado: p.estado === "recuperado" ? (r.cobrado ? "Sí" : "No") : "",
+  })));
   const ges = hist.map((h) => ({
     Fecha: new Date(h.at), Operador: h.byName, Quincena: h.q, DNI: h.rec.dni, Nombre: h.rec.nombre, Fuente: h.rec.fuente,
-    Grupo: h.grupo === "efectivo" ? "Efectivo" : "No efectivo", Tipificación: h.label, Producto: h.sub || "", Teléfono: h.tel, Intento: h.intento, Observación: h.obs, Cierre: h.cierre || "",
+    Grupo: h.grupo === "efectivo" ? "Efectivo" : "No efectivo", Tipificación: h.label, Producto: h.sub || "", Teléfono: h.tel, Intento: h.intento, Observación: h.obs, "Productos recuperados": (h.productos || []).join(", "), Cierre: h.cierre || "",
   }));
   XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(base), "Base");
+  if (prods.length) XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(prods), "Productos");
   XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(ges.length ? ges : [{ Fecha: "Sin gestiones en el período" }]), "Gestiones");
-  XLSX.writeFile(wb, `Recupero_MedicAssist_${new Date().toISOString().slice(0, 10)}.xlsx`, { cellDates: true });
+  XLSX.writeFile(wb, `Recupero_ABC_Asistencias_${new Date().toISOString().slice(0, 10)}.xlsx`, { cellDates: true });
 }
 async function exportTC() {
   if (!confirm("Vas a descargar un archivo con números de tarjeta completos. Queda registrado en la auditoría. Guardalo en un lugar seguro y borralo cuando lo entregues. ¿Continuar?")) return;
   const d = await API("ventas-tc");
   if (!d.items.length) return toast("Todavía no hay tarjetas cargadas.");
-  const rows = d.items.map((x) => ({ DNI: x.dni, Nombre: x.nombre, Fuente: x.fuente, Resultado: x.ultima, Producto: x.producto, Fecha: x.fecha ? new Date(x.fecha) : "", Operador: x.operador, Marca: x.marca, Banco: x.banco, "Número de tarjeta": x.numero, Vencimiento: x.vto || "" }));
+  const rows = d.items.map((x) => ({ DNI: x.dni, Nombre: x.nombre, Fuente: x.fuente, Resultado: x.ultima, "Productos recuperados": x.productos, Plan: x.producto, Fecha: x.fecha ? new Date(x.fecha) : "", Operador: x.operador, Marca: x.marca, Banco: x.banco, "Número de tarjeta": x.numero, Vencimiento: x.vto || "" }));
   const ws = XLSX.utils.json_to_sheet(rows);
   const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, "Tarjetas");
-  XLSX.writeFile(wb, `Tarjetas_MedicAssist_${new Date().toISOString().slice(0, 10)}.xlsx`, { cellDates: true });
+  XLSX.writeFile(wb, `Tarjetas_ABC_Asistencias_${new Date().toISOString().slice(0, 10)}.xlsx`, { cellDates: true });
 }
 
 /* ═══════════ Carga de base ═══════════ */
+const prodsOf = (r) => r.productos || [];
+const motKey = (v) => String(v || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toUpperCase().replace(/\s+/g, " ").trim();
+const prodKey = (p) => motKey(p.motivo) || motKey(p.codigo);
+const excl = () => (S.st?.config?.motivosExcluidos || []).map(motKey);
+const prodGest = (p) => p.estado !== "recuperado" && !(prodKey(p) && excl().includes(prodKey(p)));
+const prodNoGest = (p) => p.estado !== "recuperado" && !prodGest(p);
+const recNoGest = (r) => r.estado !== "cerrado" && prodsOf(r).length > 0 && !prodsOf(r).some(prodGest);
+const prodEstado = (p, r) => p.estado === "recuperado" ? "Recuperado" : prodNoGest(p) ? "No gestionable" : r && r.estado === "cerrado" ? "No recuperado" : "Pendiente";
+const prodChips = (r, compact) => prodsOf(r).map((p) => `<span class="chip ${p.estado === "recuperado" ? "g" : ""}" ${prodNoGest(p) ? 'style="text-decoration:line-through;opacity:.6"' : ""} title="${esc([p.codigo, p.motivo].filter(Boolean).join(" · "))}">${esc(p.nombre)}${p.estado === "recuperado" ? " ✓" : ""}${!compact && p.codigo ? ` · ${esc(p.codigo)}` : ""}</span>`).join(" ");
+const prodTable = (r) => prodsOf(r).length ? `<table class="t" style="margin-top:4px"><thead><tr><th>Producto</th><th>Código</th><th>Motivo del rechazo</th><th>Tarjeta</th><th>Estado</th></tr></thead><tbody>${prodsOf(r).map((p) => `<tr><td><b>${esc(p.nombre)}</b></td><td>${esc(p.codigo || "—")}</td><td>${esc(p.motivo || "—")}</td><td class="small">${esc(p.tcAnterior || "—")}</td><td>${p.estado === "recuperado" ? `<span class="chip g">Recuperado${p.at ? " " + fmtD(p.at) : ""}</span>` : prodNoGest(p) ? `<span class="chip" style="text-decoration:line-through">No gestionable</span>` : `<span class="chip">${prodEstado(p, r)}</span>`}</td></tr>`).join("")}</tbody></table>` : `<p class="muted small">La base no informó productos.</p>`;
 const nrm = (h) => String(h).normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/\s+/g, " ").trim();
 function mapCols(headers) {
-  const m = { dni: null, nombre: null, apellido: null, tel: [], tc: null, reservadas: [], notas: [], otros: [] };
+  const m = { dni: null, nombre: null, apellido: null, tel: [], tc: null, prod: null, codigo: null, motivo: null, reservadas: [], notas: [], otros: [] };
   for (const h of headers) {
     const n = nrm(h);
     if (!m.dni && /^(dni|documento|nro doc|nro\. doc|doc)$/.test(n)) m.dni = h;
     else if (!m.nombre && /^(nombre|nombre y apellido|nombre completo|cliente|titular)$/.test(n)) m.nombre = h;
     else if (!m.apellido && /^apellido/.test(n)) m.apellido = h;
+    else if (!m.prod && /^(campana|producto|plan|servicio)$/.test(n)) m.prod = h;
+    else if (!m.codigo && /^(cod|codigo)( de)?( error| rechazo)?$/.test(n)) m.codigo = h;
+    else if (!m.motivo && /^motivo/.test(n)) m.motivo = h;
     else if (/tel|cel|movil|whatsapp|contacto/.test(n)) m.tel.push(h);
     else if (/^(nueva tc|banco|marca|vencimiento|vto|cvv|cod seg)/.test(n)) m.reservadas.push(h);
     else if (!m.tc && /^(tc|tarjeta|nro tarjeta|numero de tarjeta|tc anterior)$/.test(n)) m.tc = h;
@@ -797,7 +838,7 @@ function viewCarga(m) {
   <div class="panel" style="max-width:980px">
     <div class="hd"><h2 style="font-size:17px">Cargar base</h2></div>
     <div class="bd">
-      <p class="muted" style="margin-top:0">Subí un Excel o CSV. El nombre del archivo queda como fuente de esos registros y las cargas del mismo archivo se acumulan. Si un DNI ya existe, se suman los teléfonos nuevos y se conserva toda su gestión.</p>
+      <p class="muted" style="margin-top:0">Subí un Excel o CSV. El nombre del archivo queda como fuente de esos registros y las cargas del mismo archivo se acumulan. Si un DNI se repite (varios productos), queda como una sola persona con todos sus productos. Si ya existía, se suman los productos y teléfonos nuevos y se conserva su gestión.</p>
       <label class="drop" id="drop" for="file"><b>Elegí un archivo o arrastralo acá</b><br><span class="small muted">.xlsx, .xls o .csv</span></label>
       <input type="file" id="file" accept=".xlsx,.xls,.csv" class="hidden">
       <div id="prev" style="margin-top:16px"></div>
@@ -814,38 +855,63 @@ function viewCarga(m) {
     const map = mapCols(headers);
     if (!map.dni && !map.nombre) return toast("No encontré columnas de DNI ni de nombre. Revisá los encabezados.", true);
     const fuente = file.name.replace(/\.[^.]+$/, "");
-    const prepared = rows.map((r) => {
+    const lineas = rows.map((r) => {
       const notas = map.notas.map((h) => cellStr(r[h])).filter(Boolean).join(" | ");
       const data = {}; for (const h of map.otros) { const v = cellStr(r[h]); if (v) data[h] = v; }
       return {
         dni: cellStr(r[map.dni]), nombre: [cellStr(r[map.nombre]), cellStr(r[map.apellido])].filter(Boolean).join(" "),
         telefonos: map.tel.map((h) => cellStr(r[h]).replace(/\D/g, "")).filter((t) => t.length >= 6),
         tcAnterior: map.tc ? maskTC(cellStr(r[map.tc])) : "", notas, data,
+        productos: map.prod && cellStr(r[map.prod]) ? [{ nombre: cellStr(r[map.prod]).toUpperCase(), codigo: map.codigo ? cellStr(r[map.codigo]) : "", motivo: map.motivo ? cellStr(r[map.motivo]) : "", tc: map.tc ? maskTC(cellStr(r[map.tc])) : "" }] : [],
       };
     }).filter((r) => r.dni || r.nombre);
+    // Una persona por DNI: las filas repetidas se agrupan y cada una suma su producto
+    const porDni = new Map(), prepared = [];
+    for (const l of lineas) {
+      const ex = l.dni && porDni.get(l.dni);
+      if (!ex) { prepared.push(l); if (l.dni) porDni.set(l.dni, l); continue; }
+      for (const t of l.telefonos) if (!ex.telefonos.includes(t)) ex.telefonos.push(t);
+      for (const p of l.productos) { const q = ex.productos.find((x) => x.nombre === p.nombre); if (q) Object.assign(q, p); else ex.productos.push(p); }
+      if (l.notas && !ex.notas.includes(l.notas)) ex.notas = [ex.notas, l.notas].filter(Boolean).join(" | ");
+      ex.data = { ...ex.data, ...l.data };
+      if (!ex.tcAnterior) ex.tcAnterior = l.tcAnterior;
+      if (!ex.nombre) ex.nombre = l.nombre;
+    }
+    const multi = prepared.filter((r) => r.productos.length > 1).length;
+    const porCod = {};
+    for (const r of prepared) for (const p of r.productos) { const k = prodKey(p) || "(sin motivo)"; const c = (porCod[k] ||= { codigos: new Set(), n: 0 }); c.n++; if (p.codigo) c.codigos.add(p.codigo); }
+    const exc = excl();
+    const personasNoGest = prepared.filter((r) => r.productos.length && r.productos.every((p) => prodKey(p) && exc.includes(prodKey(p)))).length;
+    const cuentaProd = {}; for (const r of prepared) for (const p of r.productos) cuentaProd[p.nombre] = (cuentaProd[p.nombre] || 0) + 1;
     const conTel = prepared.filter((r) => r.telefonos.length).length;
     $("#prev").innerHTML = `
-      <h3 style="font-size:15px;margin-bottom:8px">${esc(file.name)} · ${prepared.length} registros · fuente “${esc(fuente)}”</h3>
+      <h3 style="font-size:15px;margin-bottom:8px">${esc(file.name)} · ${lineas.length} filas → ${prepared.length} personas · fuente “${esc(fuente)}”</h3>
+      ${map.prod ? `<p class="small" style="margin:0 0 10px">${multi} personas tienen más de un producto y se llaman una sola vez. Productos: ${Object.entries(cuentaProd).sort((a, b) => b[1] - a[1]).map(([k, v]) => `<b>${esc(k)}</b> ${v}`).join(" · ")}</p>` : `<p class="warn">No encontré la columna de producto (Campaña / Producto). Si un DNI se repite, se carga una sola vez sin detalle de productos.</p>`}
+      ${Object.keys(porCod).length ? `<div class="tbl-wrap" style="margin-bottom:12px"><table class="t"><thead><tr><th>Motivo</th><th>Códigos</th><th class="n">Productos</th><th>¿Se gestiona?</th></tr></thead><tbody>${Object.entries(porCod).sort((a, b) => b[1].n - a[1].n).map(([k, v]) => `<tr><td><b>${esc(k)}</b></td><td>${esc([...v.codigos].join(", ") || "—")}</td><td class="n">${v.n}</td><td>${exc.includes(k) ? `<span class="chip" style="text-decoration:line-through">No</span>` : `<span class="chip g">Sí</span>`}</td></tr>`).join("")}</tbody></table></div>
+      <p class="small" style="margin:0 0 12px">${personasNoGest ? `<b>${personasNoGest} personas</b> quedan cargadas como <b>no gestionables</b> (todos sus productos tienen motivos que no se gestionan): no salen en la cola pero figuran en la base y en la exportación. ` : ""}Los motivos que se gestionan se definen en <b>Usuarios y configuración</b> y se pueden cambiar después de cargar: la cola se actualiza sola.</p>` : ""}
       <div class="map-list">
         <div><b>DNI</b>${esc(map.dni || "—")}</div>
         <div><b>Nombre</b>${esc([map.nombre, map.apellido].filter(Boolean).join(" + ") || "—")}</div>
         <div><b>Teléfonos</b>${esc(map.tel.join(", ") || "—")}</div>
         <div><b>Tarjeta anterior (se guarda enmascarada)</b>${esc(map.tc || "—")}</div>
+        <div><b>Producto</b>${esc(map.prod || "—")}</div>
+        <div><b>Código de error</b>${esc(map.codigo || "—")}</div>
+        <div><b>Motivo del rechazo</b>${esc(map.motivo || "—")}</div>
         <div><b>Observaciones previas</b>${esc([...new Set(map.notas.map((h) => h.startsWith("__EMPTY") ? "columnas sin título" : h))].join(", ") || "—")}</div>
         <div><b>Se ignoran (datos de tarjeta nueva)</b>${esc(map.reservadas.join(", ") || "—")}</div>
         <div><b>Otros datos para la ficha</b>${esc(map.otros.join(", ") || "—")}</div>
       </div>
       ${conTel < prepared.length ? `<p class="warn" style="margin-top:10px">${prepared.length - conTel} registros sin teléfono: no salen en la cola hasta que se les agregue uno.</p>` : ""}
       <p class="small muted">Ejemplo: ${esc(prepared[0].nombre)} · DNI ${esc(prepared[0].dni)} · TC ${esc(prepared[0].tcAnterior || "—")}</p>
-      <button class="btn primary" id="bup">Cargar ${prepared.length} registros</button>`;
+      <button class="btn primary" id="bup">Cargar ${prepared.length} personas</button>`;
     $("#bup").onclick = (e) => run(async () => {
-      let tot = { nuevos: 0, actualizados: 0, omitidos: 0 };
+      let tot = { nuevos: 0, actualizados: 0, omitidos: 0, reabiertos: 0 };
       for (let i = 0; i < prepared.length; i += 400) {
         e.target.textContent = `Cargando ${Math.min(i + 400, prepared.length)} de ${prepared.length}…`;
         const d = await API("upload", { fuente, rows: prepared.slice(i, i + 400) });
-        for (const k in tot) tot[k] += d[k];
+        for (const k in tot) tot[k] += d[k] || 0;
       }
-      $("#prev").innerHTML = `<p><b>Carga terminada.</b> ${tot.nuevos} nuevos, ${tot.actualizados} ya existían (se sumaron teléfonos y datos), ${tot.omitidos} filas vacías.</p>`;
+      $("#prev").innerHTML = `<p><b>Carga terminada.</b> ${tot.nuevos} personas nuevas, ${tot.actualizados} ya existían (se sumaron productos, teléfonos y datos)${tot.reabiertos ? `, ${tot.reabiertos} estaban cerradas y volvieron a la cola por un producto nuevo` : ""}, ${tot.omitidos} filas vacías.</p>`;
       S.records = null; await refreshState(); listFuentes();
     }, e.target);
   };
@@ -863,6 +929,35 @@ function viewCarga(m) {
 }
 
 /* ═══════════ Usuarios y configuración ═══════════ */
+async function renderMotivos() {
+  const box = $("#mot"); if (!box) return;
+  if (!S.records) { try { await loadRecords(); } catch (e) { box.textContent = "No se pudo leer la base."; return; } }
+  const exc = excl(), cod = {};
+  for (const r of S.records) for (const p of prodsOf(r)) {
+    const k = prodKey(p); if (!k) continue;
+    const c = (cod[k] ||= { codigos: new Set(), prods: 0, pend: 0, personas: new Set() });
+    c.prods++; c.personas.add(r.id); if (p.codigo) c.codigos.add(p.codigo); if (p.estado !== "recuperado" && r.estado !== "cerrado") c.pend++;
+  }
+  for (const k of exc) cod[k] ||= { codigos: new Set(), prods: 0, pend: 0, personas: new Set() };
+  const rows = Object.entries(cod).sort((a, b) => b[1].prods - a[1].prods);
+  box.innerHTML = `
+    ${rows.length ? `<div class="tbl-wrap"><table class="t"><thead><tr><th>Se gestiona</th><th>Motivo</th><th>Códigos</th><th class="n">Productos</th><th class="n">Personas</th><th class="n">Pendientes</th></tr></thead><tbody>
+      ${rows.map(([k, v]) => `<tr><td><input type="checkbox" class="mot-cb" value="${esc(k)}" ${exc.includes(k) ? "" : "checked"} aria-label="Gestionar ${esc(k)}"></td><td><b>${esc(k)}</b></td><td>${esc([...v.codigos].join(", ") || "—")}</td><td class="n">${v.prods}</td><td class="n">${v.personas.size}</td><td class="n">${v.pend}</td></tr>`).join("")}
+    </tbody></table></div>` : `<p class="muted small">Todavía no hay motivos en la base. Podés cargarla igual: se aplican los motivos excluidos que figuran acá.</p>`}
+    <div style="display:flex;gap:8px;margin-top:12px;flex-wrap:wrap;align-items:center">
+      <input type="text" id="motadd" placeholder="Motivo a excluir (texto exacto del archivo)" style="max-width:320px">
+      <button class="btn" id="bmotadd">Excluir motivo</button>
+      <button class="btn primary" id="bmot" style="margin-left:auto">Guardar motivos</button>
+    </div>
+    <p class="small muted" style="margin-bottom:0">Un motivo sin tildar saca de la cola esos productos, venga con el código que venga. Si a una persona no le queda ningún producto gestionable, deja de salir y figura como "No gestionable". Lo ya gestionado no se modifica, y si volvés a tildar el código las personas vuelven a la cola.</p>`;
+  const save = async (lista) => { await API("motivos", { excluidos: lista }); await refreshState(); toast("Motivos guardados. La cola ya quedó actualizada."); renderMotivos(); };
+  $("#bmot").onclick = (e) => run(() => save([...box.querySelectorAll(".mot-cb:not(:checked)")].map((c) => c.value)), e.target);
+  $("#bmotadd").onclick = (e) => run(() => {
+    const v = $("#motadd").value.trim(); if (!v) throw new Error("Escribí un motivo.");
+    return save([...new Set([...box.querySelectorAll(".mot-cb:not(:checked)")].map((c) => c.value).concat(v))]);
+  }, e.target);
+}
+
 async function viewConfig(m) {
   const c = S.st.config;
   m.innerHTML = `
@@ -882,6 +977,7 @@ async function viewConfig(m) {
     </div></div>
     <div class="panel"><div class="hd"><h3>Usuarios</h3></div><div class="bd" id="ul">Cargando…</div></div>
   </div>
+  <div class="panel" style="margin-bottom:18px"><div class="hd"><h3>Motivos de rechazo: qué se gestiona</h3><span class="small muted">destildá los motivos que no se llaman</span></div><div class="bd" id="mot">Cargando…</div></div>
   <div class="grid2">
     <div class="panel"><div class="hd"><h3>Auditoría</h3><span class="small muted">cargas, tarjetas vistas y exportadas, cambios</span></div><div class="bd tbl-wrap" id="au" style="max-height:420px;overflow:auto">Cargando…</div></div>
     <div class="panel"><div class="hd"><h3 style="color:var(--red)">Borrar base</h3></div><div class="bd">
@@ -893,6 +989,7 @@ async function viewConfig(m) {
     await API("config", { campaign: $("#cc").value, maxIntentos: $("#cm").value, minEntreIntentos: $("#ce").value, lockMin: $("#cl").value, horaInicio: $("#chi").value, horaFin: $("#chf").value, maxDiarios: $("#cd").value, quincenaEstricta: $("#cq").checked });
     await refreshState(); toast("Reglas guardadas."); render();
   }, e.target);
+  renderMotivos();
   $("#brz").onclick = (e) => run(async () => { await API("reset", { confirmar: $("#rz").value }); S.records = null; await refreshState(); toast("Base borrada."); render(); }, e.target);
   const users = (await API("users")).users;
   const row = (u) => `<tr data-u="${esc(u.u)}"><td><input type="text" value="${esc(u.u)}" ${u.u ? "readonly" : ""} class="uu" placeholder="usuario"></td>

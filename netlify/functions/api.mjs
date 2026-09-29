@@ -47,6 +47,8 @@ const DEF_CONFIG = {
   horaInicio: 9,
   horaFin: 13,
   maxDiarios: 2,
+  // Motivos de rechazo que NO se gestionan (se comparan normalizados: mayúsculas, sin espacios de sobra)
+  motivosExcluidos: ["BAJA DE DEB. AUT. SOLICITADA"],
 };
 
 /* ───────────── Utilidades ───────────── */
@@ -144,6 +146,29 @@ async function auth(req) {
   if (!u) fail("Usuario inactivo.", 401);
   return { ...publicUser(u), token: tok };
 }
+// Un producto se gestiona si no está recuperado y su motivo de rechazo no está excluido en la configuración.
+// Si el producto no trae motivo, se usa el código como clave.
+const motKey = (v) => String(v || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toUpperCase().replace(/\s+/g, " ").trim();
+const prodKey = (p) => motKey(p.motivo) || motKey(p.codigo);
+const prodGestionable = (p, cfg) => p.estado !== "recuperado" && !(prodKey(p) && (cfg.motivosExcluidos || []).map(motKey).includes(prodKey(p)));
+// Una persona sale en la cola si no tiene productos informados o si le queda al menos uno gestionable
+const recGestionable = (r, cfg) => !r.productos?.length || r.productos.some((p) => prodGestionable(p, cfg));
+
+// Productos por DNI: una persona puede tener varios productos rechazados (MEDICA, ELECTRO, ODONTOPLUS…)
+function addProducto(rec, p, tcA) {
+  const nombre = String(p?.nombre || "").trim().toUpperCase().slice(0, 60);
+  if (!nombre) return false;
+  rec.productos ||= [];
+  const codigo = String(p.codigo || "").trim().slice(0, 20), motivo = String(p.motivo || "").trim().slice(0, 120);
+  const ex = rec.productos.find((x) => x.nombre === nombre);
+  if (ex) {
+    if (ex.estado !== "recuperado") { ex.codigo = codigo || ex.codigo; ex.motivo = motivo || ex.motivo; if (tcA) ex.tcAnterior = tcA; }
+    return false;
+  }
+  rec.productos.push({ nombre, codigo, motivo, tcAnterior: tcA || "", estado: "pendiente", cargado: Date.now() });
+  return true;
+}
+
 // El admin pasa cualquier control de rol. "supervisor" en need() habilita también al admin.
 const need = (user, ...roles) => { if (user.role !== "admin" && !roles.includes(user.role)) fail("No tenés permiso para esta acción.", 403); };
 const esSup = (user) => user.role === "supervisor" || user.role === "admin";
@@ -256,7 +281,7 @@ export default async (req) => {
           for (const r of items) for (const h of r.hist || [])
             if (h.by === user.u && h.at >= t0) { hoy++; if (h.grupo === "efectivo") contactos++; if (h.k === "venta") ventas++; }
           out.hoy = { gestiones: hoy, contactos, ventas };
-          out.abiertos = items.filter((r) => r.estado !== "cerrado").length;
+          out.abiertos = items.filter((r) => r.estado !== "cerrado" && recGestionable(r, cfg)).length;
           out.agendaVencida = items.filter((r) => r.estado !== "cerrado" && r.agenda && r.agenda.at <= Date.now()).length;
         }
         return json(out);
@@ -272,7 +297,8 @@ export default async (req) => {
         const res = await mutate("records", REC_DEF, (db) => {
           const byDni = {};
           for (const r of Object.values(db.items)) if (r.dni) byDni[r.dni] = r;
-          let nuevos = 0, actualizados = 0, omitidos = 0;
+          let nuevos = 0, actualizados = 0, omitidos = 0, reabiertos = 0, productosSumados = 0;
+          const tocados = [];
           for (const row of rows) {
             const dni = digits(row.dni);
             const nombre = String(row.nombre || "").trim().slice(0, 120);
@@ -280,13 +306,23 @@ export default async (req) => {
             // Nunca aceptar un número de tarjeta completo en la base: se fuerza la máscara
             const tcA = String(row.tcAnterior || "").replace(/\d(?=\d{4})/g, (d, i) => (i < 6 ? d : "•")).slice(0, 30);
             const tels = (row.telefonos || []).map(digits).filter((t) => t.length >= 6 && t.length <= 15);
+            const maskS = (v) => String(v || "").replace(/\d(?=\d{4})/g, (d, i) => (i < 6 ? d : "•")).slice(0, 30);
+            const prods = [...(Array.isArray(row.productos) ? row.productos : []), ...(row.producto ? [row.producto] : [])].slice(0, 20);
             const ex = dni && byDni[dni];
             if (ex) {
+              const nuevoProd = prods.map((p) => addProducto(ex, p, maskS(p.tc) || tcA)).some(Boolean);
+              if (!ex.tcAnterior && tcA) ex.tcAnterior = tcA;
+              // Si llega un producto nuevo para alguien ya cerrado, vuelve a la cola
+              if (nuevoProd && ex.estado === "cerrado" && !ex.recienCargado) {
+                ex.estado = "pendiente"; ex.motivoCierre = null; ex.sinContacto = 0; ex.agenda = null;
+                ex.hist.push({ at: Date.now(), by: user.u, byName: user.name, grupo: "sistema", k: "reabierto", label: "Reabierto por producto nuevo en la base", obs: `${prods.map((p) => String(p.nombre || "").toUpperCase()).join(", ")} · ${fuente}` });
+                reabiertos++;
+              }
               for (const t of tels) if (!ex.telefonos.some((x) => x.n === t)) ex.telefonos.push({ n: t, origen: "base", at: Date.now() });
               ex.data = { ...ex.data, ...(row.data || {}) };
               if (row.notas && !String(ex.notas || "").includes(row.notas)) ex.notas = [ex.notas, row.notas].filter(Boolean).join(" | ");
               if (!ex.fuentes?.includes(fuente)) ex.fuentes = [...(ex.fuentes || [ex.fuente]), fuente];
-              actualizados++;
+              if (ex.recienCargado) productosSumados++; else actualizados++;
               continue;
             }
             const id = String(++db.seq);
@@ -294,16 +330,20 @@ export default async (req) => {
               id, dni, nombre, fuente, fuentes: [fuente], cargado: Date.now(),
               telefonos: tels.map((n) => ({ n, origen: "base", at: Date.now() })),
               tcAnterior: tcA, notas: String(row.notas || "").slice(0, 2000), data: row.data || {},
+              productos: [], recienCargado: true,
               intentos: 0, sinContacto: 0, contactado: false, estado: "pendiente",
               franja: null, agenda: null, ultima: null, ultimaAt: null, lock: null, hist: [], tcCargada: false, tc: null, cobrado: false,
             };
+            for (const p of prods) addProducto(rec, p, maskS(p.tc) || tcA);
             db.items[id] = rec;
+            tocados.push(rec);
             if (dni) byDni[dni] = rec;
             nuevos++;
           }
-          return { nuevos, actualizados, omitidos };
+          for (const r of tocados) delete r.recienCargado;
+          return { nuevos, actualizados, omitidos, reabiertos, productosSumados };
         });
-        await audit(user, "carga_base", `${fuente}: ${res.nuevos} nuevos, ${res.actualizados} actualizados`);
+        await audit(user, "carga_base", `${fuente}: ${res.nuevos} nuevos, ${res.actualizados} actualizados, ${res.reabiertos} reabiertos`);
         return json(res);
       }
 
@@ -328,6 +368,7 @@ export default async (req) => {
               if (!due && r.hist.filter((h) => h.grupo !== "sistema" && h.at >= t0).length >= cfg.maxDiarios) return false;
             }
             if (!r.telefonos.some((t) => !t.invalido)) return false;
+            if (!recGestionable(r, cfg)) return false;
             return true;
           });
           cand.sort((a, b) => {
@@ -427,6 +468,12 @@ export default async (req) => {
           if (r.estado === "cerrado" && !esSup(user)) fail("El registro ya está cerrado.");
           if (lockedByOther(r, user)) fail(`Lo está gestionando ${r.lock.name}.`);
           if (def.venta && !r.tcCargada) fail("Para tipificar Venta primero guardá los datos de la tarjeta nueva.");
+          let recuperados = null;
+          if (def.venta && r.productos?.length) {
+            const pend = r.productos.filter((x) => prodGestionable(x, cfg)).map((x) => x.nombre);
+            recuperados = (Array.isArray(body.productos) ? body.productos : []).map((x) => String(x).toUpperCase()).filter((x) => pend.includes(x));
+            if (pend.length && !recuperados.length) fail("Marcá qué productos recuperó el cliente.");
+          }
           const tel = digits(body.tel) || r.telefonos.find((t) => !t.invalido)?.n || "";
           const now = Date.now();
           r.intentos++;
@@ -444,12 +491,14 @@ export default async (req) => {
           r.estado = cierre ? "cerrado" : "en_curso";
           r.motivoCierre = cierre;
           if (cierre) r.agenda = null;
+          if (recuperados) for (const x of r.productos) if (recuperados.includes(x.nombre)) Object.assign(x, { estado: "recuperado", at: now, by: user.name });
+          if (def.venta) { r.cobrado = false; r.ventaAt = now; }
           r.ultima = { grupo: body.grupo, k: def.k, label: def.label, sub: body.sub || null, at: now, by: user.name };
           r.ultimaAt = now;
           r.hist.push({
             at: now, by: user.u, byName: user.name, grupo: body.grupo, k: def.k, label: def.label,
             sub: body.sub || null, obs: String(body.obs || "").slice(0, 1000), tel, q: quincenaNow(),
-            intento: r.intentos, cierre,
+            intento: r.intentos, cierre, ...(recuperados ? { productos: recuperados } : {}),
           });
           r.lock = null;
           return r;
@@ -496,6 +545,7 @@ export default async (req) => {
           const tc = decrypt(e);
           out.push({
             id: r.id, dni: r.dni, nombre: r.nombre, fuente: r.fuente, ultima: r.ultima?.label || "", producto: r.ultima?.sub || "",
+            productos: (r.productos || []).filter((x) => x.estado === "recuperado").map((x) => x.nombre).join(", "),
             fecha: r.ultima?.at || r.tc?.at, operador: r.tc?.by || "", ...tc,
           });
         }
@@ -577,10 +627,21 @@ export default async (req) => {
           horaInicio: Math.max(0, Math.min(23, +body.horaInicio || 9)),
           horaFin: Math.max(1, Math.min(24, +body.horaFin || 13)),
           maxDiarios: Math.max(1, Math.min(10, +body.maxDiarios || 2)),
+          motivosExcluidos: cfg.motivosExcluidos || [],
         };
         if (n.horaFin <= n.horaInicio) fail("La hora de fin tiene que ser posterior a la de inicio.");
         await store().setJSON("config", n);
         await audit(user, "config", JSON.stringify(n));
+        return json({ config: n });
+      }
+
+      /* Motivos de rechazo que no se gestionan */
+      case "motivos": {
+        need(user, "admin");
+        const ex = [...new Set((Array.isArray(body.excluidos) ? body.excluidos : []).map((x) => motKey(x).slice(0, 120)).filter(Boolean))].slice(0, 300);
+        const n = { ...cfg, motivosExcluidos: ex };
+        await store().setJSON("config", n);
+        await audit(user, "motivos", ex.length ? `No se gestionan: ${ex.join(", ")}` : "Se gestionan todos los códigos");
         return json({ config: n });
       }
 

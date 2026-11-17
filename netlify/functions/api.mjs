@@ -582,7 +582,7 @@ export default async (req) => {
       }
 
       case "marcar-cobrado": {
-        need(user, "supervisor");
+        need(user, "admin", "supervisor");
         await mutate("records", REC_DEF, (db) => {
           const r = db.items[body.id];
           if (!r) fail("No existe el registro.", 404);
